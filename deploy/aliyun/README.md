@@ -10,13 +10,13 @@
 - 用户明确授权后，已停止 travel-radar、wedding-journal、homepage；没有删除容器、镜像、数据库或配置。travel-radar 在 30 秒停止超时后退出 137，OOMKilled=false；另外两项退出 0/143。OpenViking、notification-gateway、Caddy、Mihomo 未停止或重启。
 - 运行目录 `/opt/gpt-load`；单个非 root 容器，SQLite，数据 `/opt/gpt-load/data`。仅发布 `127.0.0.1:3100`，不公开 OAuth 回调或语音端口。
 - Fork：`github.com/wonderyuan/gpt-load`；上游 `github.com/tbphp/gpt-load`。本地无 upstream remote，未擅自添加。
-- 应用 SHA：`6548ee0ed4cbfccc2147a48f18a7c802505ac1ba`，对应上游 `v2.0.0-rc.56`，属于 2.x **预发布**版。部署前应用源码未修改。
-- 当前固定镜像：`wonderyuan/gpt-load@sha256:884a419ea01e28dc5b33f4c791aaf9900fad3e7466449d7cc3f0f0fa42811103`，版本 `2.0.0-fork-6548ee0e-snapshot-b5db6886c3bd`，源码指纹 `b5db6886c3bd8617f50c8257516205a7ae94889bff07b96db54ce2982a4ff9c7`。未授权 Git 提交，base HEAD 仍 6548ee0e；普通密钥完整只读总览于 2026-10-28 19:37 CST 激活，基于上一模型资讯版本叠加本轮权限/展示白名单增量，重置卡、密钥周期重置和模型资讯保留。发布前 `7da106c7…` 保留作兼容回滚点。
+- 当前部署应用提交：`88c017a9ee0874500b9e42048c02731ac43c2559`（`custom`）；上游基线仍为 `6548ee0ed4cbfccc2147a48f18a7c802505ac1ba` / `v2.0.0-rc.56`，属于 2.x **预发布**版。源码已按维护者授权正式提交，不再以旧基线 SHA 代称完整定制。
+- 当前固定镜像：`wonderyuan/gpt-load@sha256:ffcc734e39c0dd068e992f71e8b123d07042a687b74852b4022e9fd291e787b5`，版本 `2.0.0-fork-88c017a9ee08`，源码指纹 `20a26c450d60f6b55d515dc3ca76eee94f209d46ec47ae768c3f560b010cb164`。由干净 `custom` 提交 `88c017a9` 构建，于 2026-10-28 19:59 CST 激活；额度/积分、重置卡、密钥周期重置、模型资讯和普通密钥只读总览全部保留。发布前 `884a419e…` 保留作兼容回滚点。
 - 上一额度总览版本 `wonderyuan/gpt-load@sha256:70d698f3cb56ffda361107dcb2f0f7f2179444b899d968bc83aadd2b32031f1f` 保留；退回旧版前必须先关闭新增credit模式，不能把启用该模式的数据直接给旧二进制启动。
 - 上一稳定镜像 `wonderyuan/gpt-load@sha256:f57b213545b9c02a09b32dfab1bb40becdc2a7eec44526151fc7dfc81c4cd481` 保留，可配套本次发布前备份回滚。
 - 已通过更新/回滚演练的另一镜像：`wonderyuan/gpt-load@sha256:43ce468637eed921580e394986eb6fe2c28fcf751b09d76175023d7bf366183c`，独立 tag `sha-6548ee0ed4cb-prebuilt-20261027T080625Z`。两者应用 SHA 相同，当前已切回原始程序基线。
 - 首次程序 SHA256：`865f459c5c826b35cbb8ffe2af6e37d42bf485d230f1934e6e51b0619e67d0a3`。含本机成功构建的前端，linux/amd64 静态 Go 二进制；不是直接使用上游镜像。
-- 维护者于 2026-10-28 明确授权将全部定制代码提交整合到 `custom`，仅保留 `main` 与 `custom`；`main` 保持上游基线，临时功能/部署分支完成整合后清理。本轮授权不包含推送远端。根 README 是项目背景和 AI 接手开发规则的唯一主入口，后续仍遵循薄定制边界。
+- 维护者于 2026-10-28 明确授权将全部定制代码提交整合到 `custom`，仅保留 `main` 与 `custom`；`main` 保持上游基线，临时功能/部署分支完成整合后清理。已按授权完成本地提交和临时分支清理；本轮没有推送远端（远端仅有main）。根 README 是项目背景和 AI 接手开发规则的唯一主入口，后续仍遵循薄定制边界。
 
 ### 资源与容量
 
@@ -243,6 +243,10 @@ GLM官方Pro返回5h总额12000积分、周60000积分，用户授权两人均�
 上线的完整只读总览已是最新应用行为，本轮源码收拢不额外扩展业务逻辑。原生管理API创建同事登录Key14，名称 `liangxiankai`，随机Key原文仅存服务器 `/opt/gpt-load/access-keys/liangxiankai.json`（0600），不写Git或文档。它是普通 `access_key`，可读完整总览与模型资讯，管理设置/重置403；因为本轮只授权登录，不分配模型额度，原生模型白名单设为不匹配任何已配置模型的专用占位项，未给同事无限模型调用权。原五把Key和保护10保持原状态/配置。创建前一致性备份 `/opt/gpt-load/backups/20261028T114429Z-stsa9uvg`。
 
 首次创建连接中断时，进程发生一次 `modernc/sqlite _walFindFrame` SIGBUS并由容器自动恢复（restart1、OOMKilled=false）。当时请求日志写入栈触发，创建未持久化；只读核对后沿用同一个幂等请求，通过HTTP管理接口创建成功。此后不再为本次验证直接打开运行中SQLite；未把该故障未经证实地归因于模型资讯或OOM。保留日志，未做数据库重置/清理，继续按本轮要求只做必要最小验证。
+
+实际提交为 `faa677ad`（全部应用/部署定制）与 `88c017a9`（设计体系文档），本地仅保留 `main`、`custom`；main仍为6548ee0e。从干净提交执行发布脚本，本机产物 `build/aliyun-release.PmdSen`，服务器交付 `/opt/gpt-load/releases/88c017a9ee0874500b9e42048c02731ac43c2559-20261028T115645Z`，含源码包、revision/source指纹、私有激活前环境/Compose与 `activation.json`。发布只重建GPT-Load；既有六把Key（含新Key14）与组配置、环境、保护文件及OpenViking/通知网关启动时间均一致。上线后同事会话access_key、总览200、模型资讯200、管理重置403；未做真实生成请求或全量回归。
+
+本次仅切镜像兼容回滚到 `wonderyuan/gpt-load@sha256:884a419ea01e28dc5b33f4c791aaf9900fad3e7466449d7cc3f0f0fa42811103` 并保留现库，不用创建Key14之前的备份覆盖当前DB。新同事密钥由服务器私有文件及本机Downloads私密交付文件保留；不纳入Git。本节发布后事实记录属于文档更新，不改变已经编译的88c017a9应用revision。
 
 ## 状态、日志、重启和备份
 
