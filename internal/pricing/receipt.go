@@ -39,9 +39,16 @@ func (receipt *Receipt) UnmarshalJSON(data []byte) error {
 func ValidateReceipt(receipt Receipt) error {
 	if (receipt.SchemaVersion != 1 && receipt.SchemaVersion != 2 &&
 		receipt.SchemaVersion != 3 && receipt.SchemaVersion != 4 && receipt.SchemaVersion != 5 &&
-		receipt.SchemaVersion != 6 && receipt.SchemaVersion != 7) ||
+		receipt.SchemaVersion != 6 && receipt.SchemaVersion != 7 && receipt.SchemaVersion != 8) ||
 		receipt.Method != ReceiptMethodUnitRateSum || receipt.MethodVersion != 1 || receipt.Currency != "USD" {
 		return fmt.Errorf("unsupported pricing receipt contract")
+	}
+	if receipt.SchemaVersion < 8 {
+		if receipt.CodingCredit != nil {
+			return fmt.Errorf("historical receipt must not contain Coding credit metadata")
+		}
+	} else if err := validateCodingCreditReceipt(receipt); err != nil {
+		return err
 	}
 	priceMultipliers := PriceMultipliers{Group: DefaultPriceMultiplier, AccessKey: DefaultPriceMultiplier}
 	if receipt.SchemaVersion < 5 {

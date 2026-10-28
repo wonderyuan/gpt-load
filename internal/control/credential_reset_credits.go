@@ -13,7 +13,6 @@ import (
 	"github.com/sirupsen/logrus"
 	"gorm.io/gorm"
 
-	"gpt-load/internal/channel"
 	"gpt-load/internal/platform/canonicaljson"
 	app_errors "gpt-load/internal/platform/errors"
 	"gpt-load/internal/platform/utils"
@@ -22,7 +21,27 @@ import (
 )
 
 type ObservationResetCredit struct {
+	Kind        string `json:"kind,omitempty"`
+	Available   *bool  `json:"available,omitempty"`
 	ExpiresAtMS *int64 `json:"expires_at_ms,omitempty"`
+}
+
+type ResetCreditConsumeRequest struct {
+	ResetType string `json:"reset_type,omitempty"`
+}
+
+func (request *ResetCreditConsumeRequest) UnmarshalJSON(raw []byte) error {
+	var wire struct {
+		ResetType optionalField[string] `json:"reset_type"`
+	}
+	if err := decodeStrictControlJSONObject(raw, &wire); err != nil {
+		return err
+	}
+	if wire.ResetType.Set && (wire.ResetType.Null || (wire.ResetType.Value != "five_hour" && wire.ResetType.Value != "week")) {
+		return app_errors.ErrValidation
+	}
+	request.ResetType = wire.ResetType.Value
+	return nil
 }
 
 type ResetCreditConsumeResponse struct {
@@ -51,7 +70,18 @@ func (s *Service) ConsumeCredentialResetCredit(
 	groupID uint,
 	credentialID uint,
 	idempotencyKey string,
+	resetTypes ...string,
 ) (ResetCreditConsumeResponse, error) {
+	kind := ""
+	if len(resetTypes) > 1 {
+		return ResetCreditConsumeResponse{}, app_errors.ErrValidation
+	}
+	if len(resetTypes) == 1 {
+		kind = resetTypes[0]
+	}
+	if kind != "" && kind != "five_hour" && kind != "week" {
+		return ResetCreditConsumeResponse{}, app_errors.ErrValidation
+	}
 	if groupID == 0 || credentialID == 0 {
 		return ResetCreditConsumeResponse{}, app_errors.ErrValidation
 	}
@@ -67,16 +97,11 @@ func (s *Service) ConsumeCredentialResetCredit(
 		return ResetCreditConsumeResponse{}, err
 	}
 	ctx = subscriptionruntime.WithNetworkContext(ctx, network)
-	channelID := channel.ID(group.ChannelID)
-	target, err := s.resolveSubscriptionTarget(channelID, group.Params)
+	target, baseURL, err := s.resolveResetCreditTarget(group)
 	if err != nil {
-		return ResetCreditConsumeResponse{}, app_errors.ErrInternalServer
+		return ResetCreditConsumeResponse{}, err
 	}
-	baseURL, err := target.BaseURL()
-	if err != nil {
-		return ResetCreditConsumeResponse{}, app_errors.ErrInternalServer
-	}
-	digest := resetCreditRequestDigest(groupID, credentialID, credential.IdentityFingerprint, baseURL)
+	digest := resetCreditRequestDigest(groupID, credentialID, credential.IdentityFingerprint, baseURL, kind)
 	if replay, found, replayErr := s.replayResetCreditOperationIfExists(
 		ctx,
 		groupID,
@@ -86,10 +111,7 @@ func (s *Service) ConsumeCredentialResetCredit(
 	); found {
 		return replay, replayErr
 	}
-	if _, supported := s.subscriptions.ResetCreditAction(channelID); !supported {
-		return ResetCreditConsumeResponse{}, app_errors.ErrValidation
-	}
-	preparedCredential, err := s.prepareStoredSubscriptionCredential(ctx, group, credential)
+	dispatch, err := s.prepareResetCreditDispatch(ctx, group, credential, target, kind)
 	if err != nil {
 		return ResetCreditConsumeResponse{}, err
 	}
@@ -108,12 +130,12 @@ func (s *Service) ConsumeCredentialResetCredit(
 		return s.replayResetCreditOperation(ctx, groupID, credentialID, operation)
 	}
 
-	if s.consumeSubscriptionResetCredit == nil {
+	if dispatch.consume == nil {
 		_ = s.finishResetCreditOperation(operation, models.CredentialResetOperationOutcomeUnknown, nil, app_errors.ErrResetCreditOutcomeUnknown.Code)
 		return ResetCreditConsumeResponse{}, app_errors.ErrResetCreditOutcomeUnknown
 	}
 	callContext, cancel := context.WithTimeout(ctx, defaultSubscriptionControlTimeout)
-	request, prepareErr := s.prepareResetCreditRequest(callContext, operation, channelID, preparedCredential, target)
+	request, prepareErr := s.prepareResetCreditRequest(callContext, operation, dispatch.prepare)
 	if prepareErr != nil {
 		cancel()
 		state, apiErr := models.CredentialResetOperationRejected, classifyResetCreditPreparationError(prepareErr)
@@ -126,10 +148,15 @@ func (s *Service) ConsumeCredentialResetCredit(
 		}
 		return ResetCreditConsumeResponse{}, apiErr
 	}
-	upstream, consumeErr := s.consumeSubscriptionResetCredit(callContext, channelID, preparedCredential, target, request)
+	upstream, consumeErr := dispatch.consume(callContext, request)
 	cancel()
 	if consumeErr != nil {
 		state, apiErr := classifyResetCreditConsumeError(consumeErr)
+		if normalizeGroupConnectionType(group.ConnectionType) == models.ConnectionTypeAPIKey && len(operation.ResultJSON) > 0 {
+			// A retry of a previously dispatched card can now be unavailable
+			// because the first request succeeded. Never unlock a new card.
+			state, apiErr = models.CredentialResetOperationOutcomeUnknown, app_errors.ErrResetCreditOutcomeUnknown
+		}
 		if persistErr := s.finishResetCreditOperation(operation, state, nil, apiErr.Code); persistErr != nil {
 			return ResetCreditConsumeResponse{}, app_errors.ErrResetCreditOutcomeUnknown
 		}
@@ -183,7 +210,8 @@ func (s *Service) ConsumeCredentialResetCredit(
 		response.Observation = &observation
 	}
 	response.ObservationPending = observationErr != nil ||
-		observation.State != string(models.CredentialObservationFresh)
+		observation.State != string(models.CredentialObservationFresh) ||
+		observation.LastErrorCode == "observation_partial"
 	if observationErr != nil {
 		utils.LogPlaneBestEffort(
 			logrus.StandardLogger(),
@@ -360,7 +388,8 @@ func (s *Service) replayResetCreditOperation(
 	observation, observationErr := s.GetCredentialObservation(ctx, groupID, credentialID)
 	if observationErr == nil {
 		response.Observation = &observation
-		response.ObservationPending = observation.State != string(models.CredentialObservationFresh)
+		response.ObservationPending = observation.State != string(models.CredentialObservationFresh) ||
+			observation.LastErrorCode == "observation_partial"
 	} else {
 		response.ObservationPending = true
 	}
@@ -369,7 +398,12 @@ func (s *Service) replayResetCreditOperation(
 	return response, nil
 }
 
-func resetCreditRequestDigest(groupID, credentialID uint, identityFingerprint, baseURL string) [sha256.Size]byte {
+func resetCreditRequestDigest(groupID, credentialID uint, identityFingerprint, baseURL string, resetTypes ...string) [sha256.Size]byte {
+	if len(resetTypes) > 0 && resetTypes[0] != "" {
+		return sha256.Sum256([]byte(fmt.Sprintf(
+			"gpt-load/credential-reset/v3/%d/%d/%s/%s/%s", groupID, credentialID, identityFingerprint, baseURL, resetTypes[0],
+		)))
+	}
 	// 自定义地址启用前的操作只使用官方端点，官方模式保留 v1 摘要以兼容旧记录。
 	// 自定义目标使用独立摘要，规范化后的完整路径也参与匹配，禁止跨目标复用。
 	if baseURL != "" {
@@ -477,9 +511,7 @@ func (s *Service) finishResetCreditOperation(
 func (s *Service) prepareResetCreditRequest(
 	ctx context.Context,
 	operation models.CredentialResetOperation,
-	channelID channel.ID,
-	credential subscriptionruntime.Credential,
-	target subscriptionruntime.Target,
+	prepare func(context.Context) (json.RawMessage, error),
 ) (subscriptionruntime.ResetCreditRequest, error) {
 	request := subscriptionruntime.ResetCreditRequest{ID: operation.RedeemRequestID}
 	if len(operation.ResultJSON) > 0 {
@@ -490,10 +522,10 @@ func (s *Service) prepareResetCreditRequest(
 		request.Data = stored.Request
 		return request, nil
 	}
-	if s.prepareSubscriptionResetCredit == nil {
+	if prepare == nil {
 		return request, nil
 	}
-	data, err := s.prepareSubscriptionResetCredit(ctx, channelID, credential, target)
+	data, err := prepare(ctx)
 	if err != nil || len(data) == 0 {
 		return request, err
 	}

@@ -39,7 +39,7 @@ export function healthTime(value: number | null, locale: string, full = false): 
 }
 export function healthIssues(
   report: HealthReport,
-  groups: readonly GroupRow[],
+  groups: readonly Pick<GroupRow, 'id' | 'name' | 'availability'>[],
   t: Translate,
 ): HealthIssue[] {
   const issues: HealthIssue[] = []

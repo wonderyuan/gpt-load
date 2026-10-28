@@ -23,6 +23,7 @@ import (
 	"gpt-load/internal/gateway"
 	"gpt-load/internal/health"
 	"gpt-load/internal/httplifecycle"
+	"gpt-load/internal/modelinfo"
 	"gpt-load/internal/outboundproxy"
 	"gpt-load/internal/platform/config"
 	"gpt-load/internal/platform/encryption"
@@ -142,6 +143,8 @@ func BuildContainer() (*dig.Container, error) {
 		newSystemOutboundProxyProvider,
 		releasecheck.NewClient,
 		releasecheck.NewChecker,
+		modelinfo.NewClient,
+		modelinfo.NewService,
 		func(
 			manager *httpclient.HTTPClientManager,
 			proxyProvider httpclient.OutboundProxyProvider,
@@ -223,8 +226,11 @@ func BuildContainer() (*dig.Container, error) {
 			cfg *config.Config,
 			service *control.Service,
 			checker *releasecheck.Checker,
+			information *modelinfo.Service,
 		) *control.Server {
-			return control.NewServerWithReleaseUpdateChecker(cfg, service, checker)
+			server := control.NewServerWithReleaseUpdateChecker(cfg, service, checker)
+			server.SetModelInfoReader(information)
+			return server
 		},
 		newHTTPRegistry,
 		func(

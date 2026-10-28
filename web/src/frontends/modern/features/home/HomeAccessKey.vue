@@ -17,14 +17,18 @@ import {
 } from '@modern/features/access-keys/access-key-display'
 import { formatNanoUSD } from '@modern/components/ui/format'
 
-const props = defineProps<{ row: AccessKeyRow }>()
+const props = defineProps<{ row: AccessKeyRow; creditAccounting?: boolean }>()
 const { t, n, locale } = useI18n()
 const status = computed(() => accessState(props.row))
 const windows = computed(
   () => new Map(props.row.cost_limit_status?.rules.map((window) => [window.id, window])),
 )
 const money = (value: string) =>
-  formatNanoUSD(String(accessNanoUSD(value)), locale.value, 'narrowSymbol', 2)
+  props.creditAccounting
+    ? t('home.creditAmount', {
+        value: n(Number(accessNanoUSD(value)) / 10_000_000, { maximumFractionDigits: 3 }),
+      })
+    : formatNanoUSD(String(accessNanoUSD(value)), locale.value, 'narrowSymbol', 2)
 function title(rule: CostRule): string {
   if (rule.kind === 'total') return t('home.totalQuota')
   const seconds = rule.period_seconds ?? 0
@@ -54,6 +58,9 @@ function percent(window?: CostWindow): number | undefined {
       }}</AppBadge></template
     >
     <div class="modern-home-key">
+      <p v-if="creditAccounting" class="modern-home-key-note">
+        {{ t('home.creditAccountingNote') }}
+      </p>
       <AppOverflowText class="modern-home-key-mask" :text="row.masked_key" />
       <dl class="modern-home-key-facts">
         <div>

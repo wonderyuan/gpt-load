@@ -86,6 +86,28 @@ func TestCompilerRejectsSubscriptionCapabilityOnAPIKeyChannel(t *testing.T) {
 	}
 }
 
+func TestCompilerAllowsAPIKeyQuotaWithoutSubscriptionCapabilities(t *testing.T) {
+	t.Parallel()
+	zhipu := findModule(t, builtInModules(), ZhipuAI)
+	definitions, err := compileBuiltInModules([]spec.Module{zhipu})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !definitions[0].descriptor.Capabilities.QuotaObservation {
+		t.Fatal("API-key quota capability was not projected")
+	}
+	for _, forbidden := range []spec.CapabilityBindings{
+		{SubscriptionDriver: "forbidden", QuotaObservation: "quota"},
+		{ModelDiscovery: "forbidden", QuotaObservation: "quota"},
+		{ResetCreditAction: "forbidden", QuotaObservation: "quota"},
+	} {
+		zhipu.Definition.Capabilities = forbidden
+		if _, err := compileBuiltInModules([]spec.Module{zhipu}); err == nil {
+			t.Fatal("API-key channel acquired subscription capability")
+		}
+	}
+}
+
 func TestCompilerRejectsOpenAIResponsesModelListRoute(t *testing.T) {
 	t.Parallel()
 

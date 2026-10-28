@@ -16,6 +16,7 @@ import (
 )
 
 type GroupEffectiveConfigResponse struct {
+	GLMCodingCreditEnabled    bool                `json:"glm_coding_credit_enabled"`
 	ErrorRules                []health.ErrorRule  `json:"error_rules"`
 	ConcurrencyLimit          int64               `json:"concurrency_limit"`
 	FirstByteTimeout          int64               `json:"first_byte_timeout"`
@@ -84,10 +85,11 @@ func effectiveGroupConfig(
 		set[name] = value
 	}
 	return GroupEffectiveConfigResponse{
-		ErrorRules:        resolved.ErrorRules.Rules(),
-		FirstByteTimeout:  durationSeconds(resolved.Timeouts.FirstByte),
-		RequestTimeout:    durationSeconds(resolved.Timeouts.Request),
-		StreamIdleTimeout: durationSeconds(resolved.Timeouts.StreamIdle),
+		GLMCodingCreditEnabled: resolved.GLMCodingCreditEnabled,
+		ErrorRules:             resolved.ErrorRules.Rules(),
+		FirstByteTimeout:       durationSeconds(resolved.Timeouts.FirstByte),
+		RequestTimeout:         durationSeconds(resolved.Timeouts.Request),
+		StreamIdleTimeout:      durationSeconds(resolved.Timeouts.StreamIdle),
 		HeaderRules: HeaderRulesResponse{
 			Set:    set,
 			Remove: append([]string{}, resolved.HeaderRules.Remove...),

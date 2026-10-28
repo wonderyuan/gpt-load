@@ -1,0 +1,12 @@
+# Independent site block; preserve and back up all existing Caddy sites.
+ai.yuanundo.top {
+	request_body {
+		max_size 32MB
+	}
+	reverse_proxy 127.0.0.1:3100 {
+		flush_interval -1
+		transport http {
+			dial_timeout 10s
+		}
+	}
+}

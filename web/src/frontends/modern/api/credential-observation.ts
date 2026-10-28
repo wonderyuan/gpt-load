@@ -30,6 +30,12 @@ export interface CredentialQuota {
   state: 'available' | 'exhausted' | 'unknown'
   usage?: QuotaUsage
 }
+export type ResetCreditKind = 'five_hour' | 'week'
+export interface ResetCreditDetail {
+  kind?: ResetCreditKind
+  available?: boolean
+  expiresAt?: number
+}
 export interface CredentialObservation {
   state: 'fresh' | 'stale' | 'refreshing' | 'error' | 'unavailable'
   observedAt: number | null
@@ -54,7 +60,9 @@ export interface CredentialObservation {
     extraUsage?: boolean
   }
   resetCredits: number
+  resetCreditsKnown?: boolean
   creditExpirations: (number | undefined)[]
+  creditDetails?: ResetCreditDetail[]
 }
 function amount(value: unknown): number | undefined {
   if (value === undefined) return undefined
@@ -72,6 +80,16 @@ export function readObservation(value: unknown): CredentialObservation | undefin
   const plan = snapshot ? record(snapshot.plan_summary) : undefined
   const account = snapshot?.account_summary == null ? undefined : record(snapshot.account_summary)
   const credits = snapshot?.credits == null ? undefined : record(snapshot.credits)
+  const creditDetails = list(snapshot?.reset_credits ?? []).map((value): ResetCreditDetail => {
+    const card = record(value)
+    return {
+      ...(card.kind === undefined
+        ? {}
+        : { kind: oneOf(card.kind, ['five_hour', 'week'] as const) }),
+      ...(card.available === undefined ? {} : { available: boolean(card.available) }),
+      expiresAt: optionalTime(card.expires_at_ms),
+    }
+  })
   return {
     state: oneOf(data.state, ['fresh', 'stale', 'refreshing', 'error', 'unavailable']),
     observedAt: data.observed_at_ms == null ? null : integer(data.observed_at_ms),
@@ -105,14 +123,13 @@ export function readObservation(value: unknown): CredentialObservation | undefin
             account.extra_usage_enabled == null ? undefined : boolean(account.extra_usage_enabled),
         }
       : undefined,
+    resetCreditsKnown: snapshot?.reset_credits_available !== undefined,
     resetCredits:
       snapshot?.reset_credits_available === undefined
         ? 0
         : integer(snapshot.reset_credits_available),
-    creditExpirations:
-      snapshot?.reset_credits === undefined
-        ? []
-        : list(snapshot.reset_credits).map((value) => optionalTime(record(value).expires_at_ms)),
+    creditExpirations: creditDetails.map((card) => card.expiresAt),
+    creditDetails,
     windows: snapshot
       ? list(snapshot.quota_windows).map((value): CredentialQuota => {
           const window = record(value)

@@ -34,7 +34,13 @@ type HomeAccessKey struct {
 	Models    []string            `json:"models"`
 }
 
+type HomeKeyAccounting struct {
+	Unit                   string `json:"unit"`
+	InternalUnitsPerCredit string `json:"internal_units_per_credit"`
+}
+
 type HomeBase struct {
+	KeyAccounting    *HomeKeyAccounting       `json:"key_accounting,omitempty"`
 	Concurrency      *ConcurrencyView         `json:"concurrency,omitempty"`
 	Inventory        HomeInventory            `json:"inventory"`
 	AccessKeys       []HomeAccessKey          `json:"access_keys"`
@@ -209,6 +215,16 @@ func (s *Service) readHomeBase(
 		}
 		s.fillAccessKeyConcurrency(&current.AccessKeyMetadata)
 		result.CurrentAccessKey = &current
+		creditOnly := len(allowedGroups) > 0
+		for groupID := range allowedGroups {
+			if !snapshot.Groups[groupID].GLMCodingCreditEnabled {
+				creditOnly = false
+				break
+			}
+		}
+		if creditOnly {
+			result.KeyAccounting = &HomeKeyAccounting{Unit: "glm_coding_credits", InternalUnitsPerCredit: "0.01"}
+		}
 	}
 	return result, nil
 }

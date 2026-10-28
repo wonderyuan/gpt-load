@@ -28,6 +28,10 @@ data_bak/
 *.db*
 *.sqlite*
 *.log
+deploy/aliyun/backups/
+
+# Local agent plans and session state
+.zcode/
 
 # Temporary and profiling output
 tmp/

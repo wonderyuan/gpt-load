@@ -2,7 +2,7 @@ import type { ApiClient } from '@shared/http/client'
 import { InvalidResponseError } from '@shared/http/errors'
 import type { ProxyOverride } from './group-create'
 import { readCredential } from './group-detail'
-import { readObservation } from './credential-observation'
+import { readObservation, type ResetCreditKind } from './credential-observation'
 import { boolean, integer, list, oneOf, record, text } from './response'
 
 export const credentialDetailKey = (group: number, id: number) =>
@@ -142,11 +142,12 @@ export async function resetCredentialQuota(
   id: number,
   key: string,
   signal: AbortSignal,
+  resetType?: ResetCreditKind,
 ) {
   const data = record(
     await client.request(`/api/groups/${group}/credentials/${id}/reset-credits/consume`, {
       method: 'POST',
-      json: {},
+      json: resetType ? { reset_type: resetType } : {},
       headers: { 'Idempotency-Key': key },
       signal,
     }),

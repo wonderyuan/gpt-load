@@ -1,0 +1,70 @@
+# Private trial after stopping the three explicitly authorized business containers.
+name: gpt-load-private
+
+services:
+  gpt-load:
+    image: ${GPT_LOAD_IMAGE:?Set a Fork-built immutable image reference}
+    platform: linux/amd64
+    user: "10001:10001"
+    ports:
+      - "127.0.0.1:3100:3001"
+    volumes:
+      - type: bind
+        source: ./data
+        target: /app/data
+        bind:
+          create_host_path: false
+    environment:
+      HOST: 0.0.0.0
+      PORT: "3001"
+      DATA_DIR: /app/data
+      DATABASE_DSN: ""
+      AUTH_KEY: ${AUTH_KEY:-}
+      ENCRYPTION_KEY: ""
+      GRACEFUL_SHUTDOWN_TIMEOUT: "10"
+      READ_TIMEOUT: "60"
+      IDLE_TIMEOUT: "120"
+      CLIENT_IP_HEADER: X-Forwarded-For
+      TRUSTED_PROXIES: 172.30.87.1/32
+      LOG_LEVEL: info
+      LOG_FORMAT: text
+      MODELS_DEV_AUTO_SYNC_ENABLED: "false"
+      MODEL_INFO_PROXY_URL: ${MODEL_INFO_PROXY_URL:-}
+      GOMEMLIMIT: 192MiB
+      GOMAXPROCS: "1"
+      HTTP_PROXY: ""
+      HTTPS_PROXY: ""
+      ALL_PROXY: ""
+      http_proxy: ""
+      https_proxy: ""
+      all_proxy: ""
+      NO_PROXY: ""
+      no_proxy: ""
+    mem_limit: 256m
+    memswap_limit: 256m
+    cpus: "1.0"
+    pids_limit: 128
+    restart: unless-stopped
+    stop_grace_period: 20s
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "-T", "3", "http://127.0.0.1:3001/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    logging:
+      driver: json-file
+      options:
+        max-size: 5m
+        max-file: "3"
+
+networks:
+  default:
+    ipam:
+      config:
+        - subnet: 172.30.87.0/24
+          gateway: 172.30.87.1

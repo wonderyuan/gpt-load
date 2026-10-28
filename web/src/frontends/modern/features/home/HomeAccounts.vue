@@ -27,7 +27,8 @@ import {
 
 const props = defineProps<{
   accounts: HomeAccount[]
-  groups: ReadonlyMap<number, GroupRow>
+  groups: ReadonlyMap<number, Pick<GroupRow, 'id' | 'name'>>
+  readonly?: boolean
   failed: boolean
   loading: boolean
 }>()
@@ -113,7 +114,14 @@ const rows = computed(() =>
             size="sm"
             class="modern-home-account-channel"
           />
-          <AppButton as-child variant="text" size="xs" class="modern-home-account-name">
+          <CredentialDisplay
+            v-if="readonly"
+            :name="row.alias"
+            :value="row.accountValue"
+            subscription
+            detail
+          />
+          <AppButton v-else as-child variant="text" size="xs" class="modern-home-account-name">
             <RouterLink :to="row.to"
               ><CredentialDisplay :name="row.alias" :value="row.accountValue" subscription detail
             /></RouterLink>

@@ -44,6 +44,7 @@ type Server struct {
 	startedAt         time.Time
 	now               func() time.Time
 	releaseChecker    ReleaseUpdateChecker
+	modelInfo         ModelInfoReader
 }
 
 const maxControlJSONBodyBytes int64 = 32 << 20
@@ -587,7 +588,8 @@ func (s *Server) handleConsumeGroupCredentialResetCredit(c *gin.Context) {
 	if !ok {
 		return
 	}
-	if err := bindOptionalEmptyJSONObject(c); err != nil {
+	var request ResetCreditConsumeRequest
+	if err := bindOptionalProbeJSON(c, &request); err != nil {
 		writeServiceError(c, "consume_group_credential_reset_credit", mapControlJSONError(err))
 		return
 	}
@@ -596,6 +598,7 @@ func (s *Server) handleConsumeGroupCredentialResetCredit(c *gin.Context) {
 		groupID,
 		credentialID,
 		idempotencyKey,
+		request.ResetType,
 	)
 	if err != nil {
 		writeServiceError(c, "consume_group_credential_reset_credit", err)

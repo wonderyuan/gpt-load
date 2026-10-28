@@ -389,8 +389,10 @@ func compileRuntime(
 			return nil, fmt.Errorf("compile subscription runtime: channel %q disappeared", descriptor.ID)
 		}
 		if descriptor.Connection.Type != string(spec.ConnectionSubscription) {
+			// API-key quota observers are compiled independently and never acquire
+			// a subscription driver or its authorization/refresh lifecycle.
 			if bindings.SubscriptionDriver != "" || bindings.ModelDiscovery != "" ||
-				bindings.QuotaObservation != "" || bindings.ResetCreditAction != "" {
+				bindings.ResetCreditAction != "" {
 				return nil, fmt.Errorf("compile subscription runtime: API key channel %q binds subscription capabilities", descriptor.ID)
 			}
 			continue

@@ -61,6 +61,9 @@ export const zhCN = {
   recovery: '恢复于 {time}',
   inactive: '尚未开始',
   quotaUnavailable: '额度状态暂不可用',
+  creditAmount: '{value} 积分',
+  creditAccountingNote:
+    'GLM Coding 积分账本，不是美元费用。内部额度 1 单位折合 100 积分；按官方模型用量及请求开始时段估算，官方剩余额度以上游为准。',
   keyDisabled: '已停用',
   connection: '客户端接入',
   manageKeys: '管理访问密钥',
@@ -204,6 +207,9 @@ export const enUS: typeof zhCN = {
   recovery: 'Resets {time}',
   inactive: 'Not started',
   quotaUnavailable: 'Quota status unavailable',
+  creditAmount: '{value} credits',
+  creditAccountingNote:
+    'GLM Coding credit ledger, not USD charges. One internal unit represents 100 credits. Estimates use official token rates and the request start time; upstream is authoritative for remaining subscription quota.',
   keyDisabled: 'Disabled',
   connection: 'Connect a client',
   manageKeys: 'Manage access keys',
@@ -356,6 +362,9 @@ export const jaJP: typeof zhCN = {
   recovery: 'リセット {time}',
   inactive: '未開始',
   quotaUnavailable: 'クォータ状態を取得できません',
+  creditAmount: '{value} クレジット',
+  creditAccountingNote:
+    'GLM Coding のクレジット台帳であり、米ドル請求ではありません。内部単位1は100クレジットです。公式トークン単価と開始時刻で見積もり、残量は上流の表示を正とします。',
   keyDisabled: '無効',
   connection: 'クライアント接続',
   manageKeys: 'アクセスキーを管理',

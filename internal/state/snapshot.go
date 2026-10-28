@@ -159,6 +159,7 @@ func (rules HeaderRules) ConfiguredNames() []string {
 }
 
 type GroupView struct {
+	GLMCodingCreditEnabled    bool
 	ErrorRules                health.ErrorRules
 	Priority                  int32
 	ConcurrencyLimit          int64
@@ -351,6 +352,20 @@ func Compile(input CompileInput) (*ConfigSnapshot, error) {
 		if err != nil {
 			return nil, fmt.Errorf("compile group %d settings: %w", group.ID, err)
 		}
+		if resolved.GLMCodingCreditEnabled {
+			target, err := input.ChannelRegistry.Resolve(group.ChannelID, group.Params)
+			if err != nil || !pricing.IsGLMCodingTarget(target) || connection.Normalize(group.ConnectionType) != "api_key" {
+				return nil, fmt.Errorf("group %d credit accounting requires the official CN GLM Coding Plan target", group.ID)
+			}
+			if resolvePriceMultiplier(group.PriceMultiplier) != pricing.DefaultPriceMultiplier {
+				return nil, fmt.Errorf("group %d credit accounting requires price multiplier 1", group.ID)
+			}
+			for _, model := range group.Models {
+				if _, ok := pricing.GLMCodingCreditPrices(model.ID); !ok {
+					return nil, fmt.Errorf("group %d has unsupported GLM Coding credit model %q", group.ID, model.ID)
+				}
+			}
+		}
 		groupProxy, err := outboundproxy.Resolve(nil, group.Proxy, input.GlobalProxy, input.EnvironmentProxy)
 		if err != nil {
 			return nil, fmt.Errorf("compile group %d proxy: %w", group.ID, err)
@@ -363,6 +378,7 @@ func Compile(input CompileInput) (*ConfigSnapshot, error) {
 			ErrorRules:                resolved.ErrorRules,
 			Priority:                  group.Priority,
 			PriceMultiplier:           resolvePriceMultiplier(group.PriceMultiplier),
+			GLMCodingCreditEnabled:    resolved.GLMCodingCreditEnabled,
 			ID:                        group.ID,
 			Name:                      group.Name,
 			ValidationProtocol:        group.ValidationProtocol,
@@ -401,6 +417,14 @@ func Compile(input CompileInput) (*ConfigSnapshot, error) {
 	}
 
 	for _, accessKey := range input.AccessKeys {
+		if resolvePriceMultiplier(accessKey.PriceMultiplier) != pricing.DefaultPriceMultiplier {
+			for groupID, group := range snapshot.Groups {
+				_, explicitlyAllowed := accessKey.Filters.Groups[groupID]
+				if group.GLMCodingCreditEnabled && (len(accessKey.Filters.Groups) == 0 || explicitlyAllowed) {
+					return nil, fmt.Errorf("access key %d using GLM Coding credit accounting requires price multiplier 1", accessKey.ID)
+				}
+			}
+		}
 		snapshot.AccessKeysByID[accessKey.ID] = newAccessKeyView(accessKey)
 		if accessKey.Status == AccessKeyStatusActive {
 			snapshot.AccessKeysByHash[accessKey.KeyHash] = newAccessKeyView(accessKey)

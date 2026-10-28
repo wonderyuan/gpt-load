@@ -7,7 +7,7 @@ import { formatCompactNumber } from '@modern/components/ui/format'
 import { dateFormatter } from '@modern/components/ui/intl-formatters'
 import HomeSectionLink from './HomeSectionLink.vue'
 
-const props = defineProps<{ report?: HomeStatistics; failed: boolean }>()
+const props = defineProps<{ report?: HomeStatistics; failed: boolean; readonly?: boolean }>()
 defineEmits<{ retry: [] }>()
 const { t, n, locale } = useI18n()
 const compact = (value: number) => formatCompactNumber(value, locale.value)
@@ -53,6 +53,7 @@ function endpointLabel(value: number): string {
   <AppPanel :title="t('home.trend')" :description="t('home.trendWindow')" compact>
     <template #actions>
       <HomeSectionLink
+        v-if="!readonly"
         :to="{ name: 'modern-usage', query: { preset: '24h' } }"
         :label="t('pages.usage.title')"
       />

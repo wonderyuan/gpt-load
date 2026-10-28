@@ -22,6 +22,8 @@ import {
 } from '@modern/components/ui'
 import { formatCompactNumber, formatNanoUSD } from '@modern/components/ui/format'
 import type { SemanticTone } from '@modern/components/ui/types'
+import type { AccountQuotaItem } from '@modern/api/fork-account-quotas'
+import GroupQuotaSummary from '@modern/features/account-quotas/GroupQuotaSummary.vue'
 import { useApiClient } from '@shared/http/client-context'
 
 const props = defineProps<{
@@ -35,6 +37,11 @@ const props = defineProps<{
   usageIncomplete: boolean
   priorityError?: string
   weightError?: string
+  quotaItems?: readonly AccountQuotaItem[]
+  quotaLoading: boolean
+  quotaFailed: boolean
+  quotaPartial: boolean
+  quotaAdmin: boolean
 }>()
 const emit = defineEmits<{
   expand: []
@@ -192,6 +199,13 @@ const lastActive = computed(() =>
         ><span>{{ n(group.modelCount) }} {{ t('groupDetail.models') }}</span
         ><span>{{ t('groups.row.successRate', { value: successRate }) }}</span>
       </div>
+      <GroupQuotaSummary
+        v-if="quotaAdmin"
+        :items="quotaItems"
+        :loading="quotaLoading"
+        :failed="quotaFailed"
+        :partial="quotaPartial"
+      />
     </div>
   </RouterLink>
   <article v-show="!mobile" class="modern-group-entry" :aria-labelledby="`${id}-name`">
@@ -235,6 +249,13 @@ const lastActive = computed(() =>
             />
             <span v-else>{{ t('groups.defaultEndpoint') }}</span>
           </div>
+          <GroupQuotaSummary
+            v-if="quotaAdmin"
+            :items="quotaItems"
+            :loading="quotaLoading"
+            :failed="quotaFailed"
+            :partial="quotaPartial"
+          />
         </div>
       </div>
       <div class="modern-group-metric" role="group" :aria-label="t('groups.board.credentials')">

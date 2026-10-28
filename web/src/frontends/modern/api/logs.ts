@@ -188,6 +188,11 @@ export interface LogReceipt {
   method: string
   method_version: number
   pricing_mode: string
+  coding_credit?: {
+    started_at: string
+    time_multiplier: string
+    internal_nano_usd_per_credit: number
+  }
   price_multipliers: { group: string; access_key: string } | null
   rule: { scope_key: string | null; channel_id: string | null; model_id: string }
   context_threshold_tokens: string | null
@@ -275,7 +280,17 @@ function receipt(value: unknown): LogReceipt | null {
   const row = record(value)
   const rule = record(row.rule)
   const multipliers = row.price_multipliers == null ? null : record(row.price_multipliers)
+  const credit = row.coding_credit == null ? null : record(row.coding_credit)
   return {
+    ...(credit
+      ? {
+          coding_credit: {
+            started_at: text(credit.started_at),
+            time_multiplier: text(credit.time_multiplier),
+            internal_nano_usd_per_credit: integer(credit.internal_nano_usd_per_credit, 1),
+          },
+        }
+      : {}),
     schema_version: integer(row.schema_version, 1),
     currency: text(row.currency),
     method: text(row.method),

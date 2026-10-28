@@ -24,6 +24,8 @@ import { jaJP as modelManager } from './model-manager'
 import { jaJP as settingsForm } from './settings-form'
 import { jaJP as autoModel } from './auto-model'
 import { jaJP as subscriptions } from './subscriptions'
+import { jaJP as accountQuotas } from '../../features/account-quotas/messages'
+import { jaJP as modelInfo } from '../../features/model-info/messages'
 
 export default {
   credentialBatchTest: credentialTestMessages['ja-JP'],
@@ -43,10 +45,12 @@ export default {
   groupWorkflows,
   parameterRules,
   credentialCards,
+  accountQuotas,
   groupDetail,
   subscriptions,
   modelSelection,
   modelManager,
+  modelInfo,
   settingsForm,
   autoModel,
   groupCreate,
@@ -123,6 +127,7 @@ export default {
     groups: { title: 'グループ' },
     groupDetail: { title: 'グループの詳細' },
     models: { title: 'モデル' },
+    modelInfo: { title: modelInfo.title },
     accessKeys: { title: 'アクセスキー' },
     usage: { title: '使用量' },
     logs: { title: 'リクエストログ' },

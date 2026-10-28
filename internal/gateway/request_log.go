@@ -49,6 +49,7 @@ type frozenAttemptPricing struct {
 	metadataSet      bool
 	pricingMode      pricing.Mode
 	priceMultipliers pricing.PriceMultipliers
+	codingCredit     *pricing.CodingCreditReceipt
 	usageDiagnostics usage.Diagnostics
 	reasoning        reasoning.Config
 }
@@ -666,6 +667,10 @@ func quoteFrozenAttempt(
 	observation.PricingCompleteness = string(quote.Completeness)
 	observation.EstimatedCostNanoUSD = int64(quote.EstimatedCostNanoUSD)
 	if receipt != nil {
+		if frozen.codingCredit != nil {
+			receipt.SchemaVersion = 8
+			receipt.CodingCredit = frozen.codingCredit
+		}
 		if encoded, err := json.Marshal(receipt); err == nil {
 			observation.ReceiptJSON = string(encoded)
 		}

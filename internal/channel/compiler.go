@@ -277,7 +277,7 @@ func validateConnection(source spec.Definition) error {
 			return fmt.Errorf("channel %q has invalid API key connection", id)
 		}
 		if source.Capabilities.SubscriptionDriver != "" || source.Capabilities.ModelDiscovery != "" ||
-			source.Capabilities.QuotaObservation != "" || source.Capabilities.ResetCreditAction != "" {
+			source.Capabilities.ResetCreditAction != "" {
 			return fmt.Errorf("channel %q binds subscription capabilities to an API key connection", id)
 		}
 	case spec.ConnectionSubscription:

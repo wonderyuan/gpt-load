@@ -40,21 +40,21 @@ const facts = computed<Fact[]>(() => [
     value: compact(props.base.groups),
     ...(props.admin ? { to: { name: 'modern-groups' } } : {}),
   },
-  { key: 'models', value: compact(props.base.models), to: { name: 'modern-models' } },
-  ...(props.admin
-    ? [
-        {
-          key: 'credentials',
-          value: compact(props.base.available) + ' / ' + compact(props.base.credentials),
-          to: { name: 'modern-health' } as RouteLocationRaw,
-        },
-        {
-          key: 'keys',
-          value: compact(props.base.keys.length),
-          to: { name: 'modern-access-keys' } as RouteLocationRaw,
-        },
-      ]
-    : []),
+  {
+    key: 'models',
+    value: compact(props.base.models),
+    ...(props.admin ? { to: { name: 'modern-models' } } : {}),
+  },
+  {
+    key: 'credentials',
+    value: compact(props.base.available) + ' / ' + compact(props.base.credentials),
+    ...(props.admin ? { to: { name: 'modern-health' } as RouteLocationRaw } : {}),
+  },
+  {
+    key: 'keys',
+    value: compact(props.base.keys.length),
+    ...(props.admin ? { to: { name: 'modern-access-keys' } as RouteLocationRaw } : {}),
+  },
 ])
 const state = computed(() => {
   if (!props.admin && props.base.currentKey?.cost_limit_status?.allowed === false)
@@ -62,7 +62,7 @@ const state = computed(() => {
   if (props.base.credentials === 0) return { key: 'home.statePending', tone: 'neutral' as const }
   if (props.base.available === 0) return { key: 'home.stateStalled', tone: 'danger' as const }
   return {
-    key: props.admin ? 'home.stateHealthy' : 'home.stateKeyAvailable',
+    key: props.base.currentKey ? 'home.stateKeyAvailable' : 'home.stateHealthy',
     tone: 'success' as const,
   }
 })
@@ -120,7 +120,7 @@ const uptime = computed(() => {
         </div>
       </dl>
       <AppButton
-        v-if="attention"
+        v-if="attention && admin"
         as-child
         size="xs"
         variant="ghost"

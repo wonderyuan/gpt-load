@@ -53,6 +53,14 @@ func TestBuildContainerExposesUnifiedRouteCatalog(t *testing.T) {
 		},
 		{
 			ModuleName: "control",
+			RouteName:  "control.fork.model-info",
+			Owner:      httproute.OwnerControl,
+			Auth:       httproute.AuthControl,
+			Methods:    []string{http.MethodGet},
+			Path:       "/api/fork/model-info",
+		},
+		{
+			ModuleName: "control",
 			RouteName:  "control.models.list",
 			Owner:      httproute.OwnerControl,
 			Auth:       httproute.AuthControl,

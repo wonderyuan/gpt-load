@@ -358,18 +358,17 @@ func (s *Service) UpdateGroupSettings(
 			if err != nil {
 				return err
 			}
-			if group.ConnectionType == models.ConnectionTypeSubscription {
-				credentialIDs := tx.Model(&models.Credential{}).Select("id").Where("group_id = ?", groupID)
-				if err := tx.Model(&models.CredentialObservation{}).Where("credential_id IN (?)", credentialIDs).
-					Updates(map[string]any{
-						"state": models.CredentialObservationUnavailable, "snapshot_json": models.JSON(`{}`),
-						"observation_version": gorm.Expr("observation_version + 1"),
-						"observed_at_ms":      nil, "last_attempt_at_ms": nil, "next_allowed_at_ms": nil,
-						"last_error_code": "", "last_auth_refresh_secret_version": nil,
-						"updated_at_ms": s.now().UTC().UnixMilli(),
-					}).Error; err != nil {
-					return app_errors.ParseDBError(err)
-				}
+			// Quota observations belong to the effective target for API keys too.
+			credentialIDs := tx.Model(&models.Credential{}).Select("id").Where("group_id = ?", groupID)
+			if err := tx.Model(&models.CredentialObservation{}).Where("credential_id IN (?)", credentialIDs).
+				Updates(map[string]any{
+					"state": models.CredentialObservationUnavailable, "snapshot_json": models.JSON(`{}`),
+					"observation_version": gorm.Expr("observation_version + 1"),
+					"observed_at_ms":      nil, "last_attempt_at_ms": nil, "next_allowed_at_ms": nil,
+					"last_error_code": "", "last_auth_refresh_secret_version": nil,
+					"updated_at_ms": s.now().UTC().UnixMilli(),
+				}).Error; err != nil {
+				return app_errors.ParseDBError(err)
 			}
 		}
 		committed = group

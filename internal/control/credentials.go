@@ -287,7 +287,8 @@ func (s *Service) captureCredentials(ctx context.Context, groupID uint) (credent
 	}
 	observations := make([]models.CredentialObservation, 0)
 	var observationsErr error
-	if groupErr == nil && rowsErr == nil && len(rows) > 0 && normalizeGroupConnectionType(group.ConnectionType) == models.ConnectionTypeSubscription {
+	if groupErr == nil && rowsErr == nil && len(rows) > 0 &&
+		(normalizeGroupConnectionType(group.ConnectionType) == models.ConnectionTypeSubscription || s.supportsCredentialObservation(group)) {
 		observationsErr = s.db.WithContext(ctx).
 			Where("credential_id IN (?)", credentialIDs(rows)).Find(&observations).Error
 	}
@@ -445,7 +446,7 @@ func (s *Service) mapCredentialCollection(
 		item.AuthErrorCode = safeInternalErrorCode(row.AuthErrorCode)
 		item.Account = account
 		item.Proxy = proxyViews[row.ID]
-		if item.ConnectionType == string(models.ConnectionTypeSubscription) {
+		if item.ConnectionType == string(models.ConnectionTypeSubscription) || s.supportsCredentialObservation(observation.group) {
 			item.Observation = presentCredentialObservation(observation.subscription[row.ID], row.IdentityFingerprint)
 			item.Observation = withCredentialPlan(item.Observation, account.PlanType)
 		}

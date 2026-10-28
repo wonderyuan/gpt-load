@@ -62,6 +62,8 @@ type QuotaWindow struct {
 }
 
 type ResetCredit struct {
+	Kind        string `json:"kind,omitempty"`
+	Available   *bool  `json:"available,omitempty"`
 	ExpiresAtMS *int64 `json:"expires_at_ms,omitempty"`
 }
 

@@ -24,7 +24,8 @@ import type { HealthIssue } from '@modern/features/health/health-display'
 
 const props = defineProps<{
   issues?: readonly HealthIssue[]
-  groups: ReadonlyMap<number, GroupRow>
+  groups: ReadonlyMap<number, Pick<GroupRow, 'channelIcon' | 'channelMark' | 'channelName'>>
+  readonly?: boolean
   failed: boolean
 }>()
 defineEmits<{ retry: [] }>()
@@ -60,8 +61,9 @@ function icon(item: HealthIssue) {
     </p>
     <ul v-if="items.length" class="modern-home-attention">
       <li v-for="item in visibleItems" :key="item.key">
-        <RouterLink
-          :to="{ name: 'modern-health', query: { detail: item.key } }"
+        <component
+          :is="readonly ? 'div' : RouterLink"
+          :to="readonly ? undefined : { name: 'modern-health', query: { detail: item.key } }"
           class="modern-home-attention-link"
         >
           <AppChannelIcon
@@ -79,8 +81,13 @@ function icon(item: HealthIssue) {
             <AppOverflowText class="modern-home-attention-subject" :text="item.name" />
             <AppOverflowText class="modern-home-attention-detail" :text="item.reason" />
           </span>
-          <AppIcon :icon="ArrowRight" size="sm" class="modern-home-attention-arrow" />
-        </RouterLink>
+          <AppIcon
+            v-if="!readonly"
+            :icon="ArrowRight"
+            size="sm"
+            class="modern-home-attention-arrow"
+          />
+        </component>
       </li>
     </ul>
   </AppPanel>

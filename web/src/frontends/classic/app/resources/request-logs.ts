@@ -132,11 +132,16 @@ export interface RequestLogPricingLineDto {
 }
 
 export interface RequestLogPricingReceiptDto {
-  schema_version: 1 | 2 | 3 | 4 | 5 | 6 | 7
+  schema_version: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8
   method: 'unit_rate_sum'
   method_version: 1
   currency: 'USD'
   pricing_mode: string
+  coding_credit?: {
+    started_at: string
+    time_multiplier: string
+    internal_nano_usd_per_credit: number
+  }
   price_multipliers?: { group: string; access_key: string }
   rule: { scope_key?: string; channel_id?: string; model_id: string }
   context_threshold_tokens: string | null
@@ -449,6 +454,7 @@ function projectPricingReceipt(value: unknown): RequestLogPricingReceiptDto | nu
     'currency',
     'pricing_mode',
     'price_multipliers',
+    'coding_credit',
     'rule',
     'context_threshold_tokens',
     'line_items',
@@ -493,8 +499,27 @@ function projectPricingReceipt(value: unknown): RequestLogPricingReceiptDto | nu
         line.amount_nano_usd === null ? null : projectNonNegativeInt64String(line.amount_nano_usd),
     }
   })
-  const schemaVersion = projectSafeInteger(record.schema_version, { minimum: 1, maximum: 7 }) as
-    1 | 2 | 3 | 4 | 5 | 6 | 7
+  const schemaVersion = projectSafeInteger(record.schema_version, { minimum: 1, maximum: 8 }) as
+    1 | 2 | 3 | 4 | 5 | 6 | 7 | 8
+  let codingCredit: RequestLogPricingReceiptDto['coding_credit']
+  if (schemaVersion === 8) {
+    const credit = projectRecord(record.coding_credit)
+    assertNoSecretLikeFields(credit, [
+      'started_at',
+      'time_multiplier',
+      'internal_nano_usd_per_credit',
+    ])
+    codingCredit = {
+      started_at: projectNonBlankString(credit.started_at),
+      time_multiplier: projectPriceMultiplier(credit.time_multiplier),
+      internal_nano_usd_per_credit: projectSafeInteger(credit.internal_nano_usd_per_credit, {
+        minimum: 10_000_000,
+        maximum: 10_000_000,
+      }),
+    }
+  } else if (record.coding_credit !== undefined) {
+    invalidResponse()
+  }
   if (schemaVersion < 7 && lines.some((line) => line.model_id !== undefined)) invalidResponse()
   let priceMultipliers: RequestLogPricingReceiptDto['price_multipliers']
   if (schemaVersion >= 5) {
@@ -524,6 +549,7 @@ function projectPricingReceipt(value: unknown): RequestLogPricingReceiptDto | nu
   }
   return {
     schema_version: schemaVersion,
+    ...(codingCredit === undefined ? {} : { coding_credit: codingCredit }),
     method: projectEnum(record.method, ['unit_rate_sum'] as const),
     method_version: projectSafeInteger(record.method_version, { minimum: 1, maximum: 1 }) as 1,
     currency: projectEnum(record.currency, ['USD'] as const),

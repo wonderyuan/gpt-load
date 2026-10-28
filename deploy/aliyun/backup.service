@@ -1,0 +1,15 @@
+[Unit]
+Description=Private GPT-Load consistent SQLite backup
+After=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 /opt/gpt-load/bin/backup.py /opt/gpt-load
+WorkingDirectory=/opt/gpt-load
+UMask=0077
+Nice=15
+IOSchedulingClass=idle
+CPUQuota=10%
+MemoryMax=96M
+NoNewPrivileges=true
+PrivateTmp=true

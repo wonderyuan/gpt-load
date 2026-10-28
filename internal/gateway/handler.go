@@ -152,8 +152,12 @@ func (handler *Handler) freezeAttemptPricing(
 		usageDiagnostics: observations.UsageDiagnostics,
 		reasoning:        observations.Reasoning.Clone(),
 	}
-	if observations.Operation != execution.OperationWebSearch && observationsAvailable && handler != nil && handler.priceTables != nil {
-		frozen.table = handler.priceTables.Load()
+	if observations.Operation != execution.OperationWebSearch && observationsAvailable && handler != nil {
+		if selection.Group.GLMCodingCreditEnabled && pricing.IsGLMCodingTarget(selection.ResolvedTarget) {
+			frozen.table, frozen.codingCredit = pricing.FreezeGLMCodingCreditTable(handler.now())
+		} else if handler.priceTables != nil {
+			frozen.table = handler.priceTables.Load()
+		}
 	}
 	return frozen
 }

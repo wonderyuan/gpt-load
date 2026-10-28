@@ -62,6 +62,7 @@ export type RuntimeSettings = Partial<
   Record<RuntimeNumber, number> & Record<RuntimeSwitch, boolean>
 > & {
   codex_live_mode?: CodexLiveMode
+  glm_coding_credit_enabled?: boolean
   header_rules?: HeaderRules
   parameter_overrides?: ParameterRule[]
   error_rules?: ErrorRule[]
@@ -98,6 +99,8 @@ function readRuntime(value: unknown): RuntimeSettings {
   const raw = record(value)
   const result: RuntimeSettings = {}
   if (raw.error_rules !== undefined) result.error_rules = readErrorRules(raw.error_rules)
+  if (raw.glm_coding_credit_enabled !== undefined)
+    result.glm_coding_credit_enabled = boolean(raw.glm_coding_credit_enabled)
   for (const key of runtimeNumbers) if (raw[key] !== undefined) result[key] = integer(raw[key])
   for (const key of runtimeSwitches) if (raw[key] !== undefined) result[key] = boolean(raw[key])
   if (raw.codex_live_mode !== undefined)

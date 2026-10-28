@@ -3,7 +3,10 @@ import type { CredentialRow } from '@modern/api/group-detail'
 import type { CredentialQuota } from '@modern/api/credential-observation'
 import type { SemanticTone } from '@modern/components/ui'
 
-export function credentialStatus(row: CredentialRow): { key: string; tone: SemanticTone } {
+export function credentialStatus(row: Pick<CredentialRow, 'enabled' | 'authState' | 'state'>): {
+  key: string
+  tone: SemanticTone
+} {
   if (!row.enabled) return { key: 'groups.credentials.disabled', tone: 'neutral' }
   if (row.authState !== 'ready')
     return {

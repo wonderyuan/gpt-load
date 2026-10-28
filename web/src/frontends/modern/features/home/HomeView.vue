@@ -6,7 +6,13 @@ import { useQuery } from '@tanstack/vue-query'
 import { computed, nextTick, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute } from 'vue-router'
-import { getHome, getHomeAccounts, getHomeStatistics, homeStatisticsKey } from '@modern/api/home'
+import {
+  getHome,
+  getHomeAccounts,
+  getHomeStatistics,
+  getHomeOverview,
+  homeStatisticsKey,
+} from '@modern/api/home'
 import { getGroupWorkspace, groupQueryKey } from '@modern/api/groups'
 import { getHealth } from '@modern/api/health'
 import { getLogAccessKeys } from '@modern/api/logs'
@@ -22,7 +28,6 @@ import {
 } from '@modern/components/ui'
 import RouteInspector from '@modern/features/inspector/RouteInspector.vue'
 import { compareHealthIssues, healthIssues } from '@modern/features/health/health-display'
-import HomeAccessKey from './HomeAccessKey.vue'
 import HomeAccounts from './HomeAccounts.vue'
 import HomeAttention from './HomeAttention.vue'
 import HomeRouteTool from './HomeRouteTool.vue'
@@ -30,6 +35,7 @@ import HomeSetupGuide from './HomeSetupGuide.vue'
 import HomeStatusBar from './HomeStatusBar.vue'
 import HomeTrend from './HomeTrend.vue'
 import GatewayConnection from './GatewayConnection.vue'
+import AccountQuotasPanel from '@modern/features/account-quotas/AccountQuotasPanel.vue'
 
 const { t, locale } = useI18n()
 const isMobile = useMobileLayout()
@@ -42,19 +48,46 @@ function closeMobileTool(): void {
   inspectorOpen.value = false
 }
 const inspector = ref<InstanceType<typeof RouteInspector>>()
+const accountQuotas = ref<InstanceType<typeof AccountQuotasPanel>>()
 const inspectorSection = ref<HTMLElement>()
 const admin = computed(() => session.state.principalType === 'admin')
 const baseQuery = useQuery({
   queryKey: ['modern', 'home', 'base'],
   queryFn: ({ signal }) => getHome(client, signal),
+  enabled: admin,
 })
-const base = computed(() => baseQuery.data.value)
+const overview = useQuery({
+  queryKey: ['modern', 'home', 'shared-overview'],
+  queryFn: ({ signal }) => getHomeOverview(client, signal),
+  enabled: computed(() => !admin.value),
+})
+const base = computed(() => (admin.value ? baseQuery.data.value : overview.data.value?.base))
+const basePending = computed(() =>
+  admin.value ? baseQuery.isPending.value : overview.isPending.value,
+)
+const baseFailed = computed(() => (admin.value ? baseQuery.isError.value : overview.isError.value))
 const groups = useQuery({
   queryKey: groupQueryKey,
   queryFn: ({ signal }) => getGroupWorkspace(client, signal),
   enabled: admin,
 })
-const groupMap = computed(() => new Map(groups.data.value?.items.map((group) => [group.id, group])))
+const displayGroups = computed(() =>
+  admin.value ? groups.data.value?.items : overview.data.value?.groups,
+)
+const groupMap = computed(() => new Map(displayGroups.value?.map((group) => [group.id, group])))
+const displayChannels = computed(() => [
+  ...new Map(
+    displayGroups.value?.map((group) => [
+      group.channelID,
+      {
+        id: group.channelID,
+        name: group.channelName,
+        icon: group.channelIcon,
+        mark: group.channelMark,
+      },
+    ]),
+  ).values(),
+])
 const keys = useQuery({
   queryKey: ['modern', 'log-access-key-options'],
   queryFn: ({ signal }) => getLogAccessKeys(client, signal),
@@ -68,12 +101,32 @@ const accounts = useQuery({
 const statistics = useQuery({
   queryKey: homeStatisticsKey,
   queryFn: ({ signal }) => getHomeStatistics(client, signal),
+  enabled: admin,
 })
 const health = useQuery({
   queryKey: ['modern', 'health'],
   queryFn: ({ signal }) => getHealth(client, signal),
   enabled: admin,
 })
+const trendReport = computed(() =>
+  admin.value ? statistics.data.value : overview.data.value?.statistics,
+)
+const accountReport = computed(() =>
+  admin.value ? accounts.data.value : overview.data.value?.accounts,
+)
+const healthReport = computed(() => (admin.value ? health.data.value : overview.data.value?.health))
+const trendFailed = computed(() =>
+  admin.value ? statistics.isError.value : overview.isError.value,
+)
+const accountsFailed = computed(() =>
+  admin.value ? accounts.isError.value : overview.isError.value,
+)
+const accountsPending = computed(() =>
+  admin.value ? accounts.isPending.value : overview.isPending.value,
+)
+const attentionFailed = computed(() =>
+  admin.value ? health.isError.value || groups.isError.value : overview.isError.value,
+)
 // 初始化只看配置是否齐全，不把停用、冷却等运行状态当成尚未配置。
 const showSetup = computed(() => {
   if (!admin.value || !groups.data.value || !keys.data.value) return false
@@ -86,8 +139,8 @@ const emptyProject = computed(
   () => admin.value && groups.data.value?.items.length === 0 && keys.data.value?.length === 0,
 )
 const attentionIssues = computed(() => {
-  if (!admin.value || !health.data.value || !groups.data.value) return undefined
-  return healthIssues(health.data.value, groups.data.value.items, (key, values) =>
+  if (!healthReport.value || !displayGroups.value) return undefined
+  return healthIssues(healthReport.value, displayGroups.value, (key, values) =>
     t(key, values ?? {}),
   ).sort((left, right) => compareHealthIssues(left, right, locale.value))
 })
@@ -101,34 +154,52 @@ async function refreshOptions(): Promise<void> {
   await Promise.all([groups.refetch(), keys.refetch()])
 }
 async function refreshHealth(): Promise<void> {
+  if (!admin.value) {
+    await overview.refetch()
+    return
+  }
   await Promise.all([health.refetch(), groups.refetch()])
 }
 async function refresh(): Promise<void> {
+  if (!admin.value) {
+    await Promise.all([overview.refetch(), accountQuotas.value?.refresh()])
+    return
+  }
   await Promise.all([
     baseQuery.refetch(),
     statistics.refetch(),
     ...(admin.value
-      ? [refreshOptions(), accounts.refetch(), health.refetch(), inspector.value?.refresh()]
+      ? [
+          refreshOptions(),
+          accounts.refetch(),
+          health.refetch(),
+          inspector.value?.refresh(),
+          accountQuotas.value?.refresh(),
+        ]
       : []),
   ])
 }
 usePageRefresh({
   refresh,
   pending: () =>
+    overview.isFetching.value ||
     baseQuery.isFetching.value ||
     statistics.isFetching.value ||
     groups.isFetching.value ||
     keys.isFetching.value ||
     accounts.isFetching.value ||
     health.isFetching.value ||
-    Boolean(inspector.value?.pending),
+    Boolean(inspector.value?.pending) ||
+    Boolean(accountQuotas.value?.pending),
   updatedAt: () =>
     Math.max(
+      overview.data.value?.observedAt ?? 0,
       base.value?.observedAt ?? 0,
       statistics.data.value?.observedAt ?? 0,
       accounts.data.value?.observedAt ?? 0,
       health.data.value?.observedAt ?? 0,
       inspector.value?.updatedAt ?? 0,
+      accountQuotas.value?.updatedAt ?? 0,
     ) || undefined,
 })
 const sectionReady = computed(
@@ -157,18 +228,21 @@ watch(
   <div class="modern-home-workspace">
     <AppCollectionState
       v-if="!base"
-      :loading="baseQuery.isPending.value"
-      :error="baseQuery.isError.value"
-      :title="t(baseQuery.isError.value ? 'home.baseFailed' : 'ui.loading')"
+      :loading="basePending"
+      :error="baseFailed"
+      :title="t(baseFailed ? 'home.baseFailed' : 'ui.loading')"
     >
-      <AppButton v-if="baseQuery.isError.value" @click="refresh">{{ t('ui.retry') }}</AppButton>
+      <AppButton v-if="baseFailed" @click="refresh">{{ t('ui.retry') }}</AppButton>
     </AppCollectionState>
     <template v-else>
-      <div v-if="baseQuery.isError.value" class="modern-home-error" role="status">
+      <div v-if="baseFailed" class="modern-home-error" role="status">
         <span>{{ t('home.baseFailed') }}</span>
-        <AppButton size="xs" @click="baseQuery.refetch()">{{ t('ui.retry') }}</AppButton>
+        <AppButton size="xs" @click="admin ? baseQuery.refetch() : overview.refetch()">{{
+          t('ui.retry')
+        }}</AppButton>
       </div>
       <HomeStatusBar :mobile="isMobile" :base="base" :admin="admin" :attention="attention" />
+      <AccountQuotasPanel ref="accountQuotas" :groups="displayGroups" :channels="displayChannels" />
       <AppNotice v-if="admin && (groups.isError.value || keys.isError.value)" tone="warning">
         <div class="modern-home-options-error">
           <span>{{ t('home.setupFailed') }}</span>
@@ -184,7 +258,7 @@ watch(
       />
       <div v-if="!isMobile" class="modern-home-columns">
         <div class="modern-home-main">
-          <GatewayConnection :keys="base.keys" :admin="admin" />
+          <GatewayConnection :keys="base.keys" :admin="admin" :readonly="!admin" />
           <div
             v-if="admin"
             id="route-inspector"
@@ -212,34 +286,36 @@ watch(
         </div>
         <div class="modern-home-side">
           <HomeTrend
-            :report="statistics.data.value"
-            :failed="statistics.isError.value"
-            @retry="statistics.refetch()"
+            :report="trendReport"
+            :failed="trendFailed"
+            :readonly="!admin"
+            @retry="admin ? statistics.refetch() : overview.refetch()"
           />
           <HomeAccounts
-            v-if="admin"
-            :accounts="accounts.data.value?.items ?? []"
+            :readonly="!admin"
+            :accounts="accountReport?.items ?? []"
             :groups="groupMap"
-            :failed="accounts.isError.value"
-            :loading="accounts.isPending.value"
-            @retry="accounts.refetch()"
+            :failed="accountsFailed"
+            :loading="accountsPending"
+            @retry="admin ? accounts.refetch() : overview.refetch()"
           />
-          <div v-if="admin" class="modern-home-attention-section">
+          <div class="modern-home-attention-section">
             <HomeAttention
               :issues="attentionIssues"
               :groups="groupMap"
-              :failed="health.isError.value || groups.isError.value"
+              :failed="attentionFailed"
+              :readonly="!admin"
               @retry="refreshHealth"
             />
           </div>
-          <HomeAccessKey v-if="!admin && base.currentKey" :row="base.currentKey" />
         </div>
       </div>
       <div v-else class="modern-home-mobile">
         <HomeTrend
-          :report="statistics.data.value"
-          :failed="statistics.isError.value"
-          @retry="statistics.refetch()"
+          :report="trendReport"
+          :failed="trendFailed"
+          :readonly="!admin"
+          @retry="admin ? statistics.refetch() : overview.refetch()"
         />
         <div class="modern-home-mobile-tools">
           <AppButton :icon="Cable" @click="connectionOpen = true">{{
@@ -249,21 +325,22 @@ watch(
             t('pages.inspector.title')
           }}</AppButton>
         </div>
-        <HomeAccessKey v-if="!admin && base.currentKey" :row="base.currentKey" />
         <HomeAttention
-          v-if="admin && (attention || health.isError.value || groups.isError.value)"
+          v-if="attention || attentionFailed"
           :issues="attentionIssues"
           :groups="groupMap"
-          :failed="health.isError.value || groups.isError.value"
+          :failed="attentionFailed"
+          :readonly="!admin"
           @retry="refreshHealth"
         />
         <HomeAccounts
-          v-if="admin && (accounts.data.value?.items.length || accounts.isError.value)"
-          :accounts="accounts.data.value?.items ?? []"
+          v-if="accountReport?.items.length || accountsFailed"
+          :readonly="!admin"
+          :accounts="accountReport?.items ?? []"
           :groups="groupMap"
-          :failed="accounts.isError.value"
-          :loading="accounts.isPending.value"
-          @retry="accounts.refetch()"
+          :failed="accountsFailed"
+          :loading="accountsPending"
+          @retry="admin ? accounts.refetch() : overview.refetch()"
         />
         <DialogRoot
           :open="connectionOpen || inspectorOpen"
@@ -287,7 +364,12 @@ watch(
               @close="closeMobileTool"
             />
             <div class="modern-home-mobile-tool-body">
-              <GatewayConnection v-if="connectionOpen" :keys="base.keys" :admin="admin" />
+              <GatewayConnection
+                v-if="connectionOpen"
+                :keys="base.keys"
+                :admin="admin"
+                :readonly="!admin"
+              />
               <RouteInspector
                 v-else-if="admin"
                 ref="inspector"

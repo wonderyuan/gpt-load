@@ -12,6 +12,7 @@ import (
 
 	"gorm.io/gorm"
 
+	"gpt-load/internal/apikeyobservation"
 	"gpt-load/internal/channel"
 	app_errors "gpt-load/internal/platform/errors"
 	"gpt-load/internal/requestlog"
@@ -245,9 +246,13 @@ func (s *Service) refreshCredentialObservationOnce(
 		}
 	}
 	now := s.now().UTC()
-	preparedCredential, err := s.prepareStoredSubscriptionCredential(ctx, group, credential)
-	if err != nil {
-		return CredentialObservationResponse{}, err
+	isSubscription := normalizeGroupConnectionType(group.ConnectionType) == models.ConnectionTypeSubscription
+	var preparedCredential subscriptionruntime.Credential
+	if isSubscription {
+		preparedCredential, err = s.prepareStoredSubscriptionCredential(ctx, group, credential)
+		if err != nil {
+			return CredentialObservationResponse{}, err
+		}
 	}
 	select {
 	case s.observationSemaphore <- struct{}{}:
@@ -265,9 +270,15 @@ func (s *Service) refreshCredentialObservationOnce(
 	}
 	// 恢复不得覆盖本次额度请求在途期间产生的新拒绝。
 	observationStartedMS := s.now().UTC().UnixMilli()
-	observation, observeErr := s.observeSubscriptionAccount(observeContext, channelID, preparedCredential, target)
+	var observation subscriptionruntime.Observation
+	var observeErr error
+	if isSubscription {
+		observation, observeErr = s.observeSubscriptionAccount(observeContext, channelID, preparedCredential, target)
+	} else {
+		observation, observeErr = s.observeAPIKeyQuota(observeContext, group, credential)
+	}
 	authRefreshVersion := previous.LastAuthRefreshSecretVersion
-	if subscriptionUpstreamHTTPStatus(observeErr) == http.StatusUnauthorized &&
+	if isSubscription && subscriptionUpstreamHTTPStatus(observeErr) == http.StatusUnauthorized &&
 		(previous.LastAuthRefreshSecretVersion == nil ||
 			*previous.LastAuthRefreshSecretVersion != credential.SecretVersion) &&
 		s.prepareSubscriptionCredential != nil {
@@ -637,6 +648,45 @@ func (s *Service) GetCredentialDetail(ctx context.Context, groupID, credentialID
 	return CredentialDetailResponse{Credential: item, Observation: observation}, nil
 }
 
+// supportsCredentialObservation includes provider target eligibility, not merely
+// the channel's potential capability (PAYG/custom Zhipu targets are excluded).
+func (s *Service) supportsCredentialObservation(group models.Group) bool {
+	if normalizeGroupConnectionType(group.ConnectionType) == models.ConnectionTypeSubscription {
+		_, ok := s.subscriptions.QuotaObservation(channel.ID(group.ChannelID))
+		return ok
+	}
+	if normalizeGroupConnectionType(group.ConnectionType) != models.ConnectionTypeAPIKey || s.channelRegistry == nil {
+		return false
+	}
+	target, err := s.channelRegistry.Resolve(channel.ID(group.ChannelID), json.RawMessage(group.Params))
+	if err != nil {
+		return false
+	}
+	_, ok := s.apiKeyObservations.Resolve(target)
+	return ok
+}
+
+func (s *Service) observeAPIKeyQuota(ctx context.Context, group models.Group, credential models.Credential) (subscriptionruntime.Observation, error) {
+	target, err := s.channelRegistry.Resolve(channel.ID(group.ChannelID), json.RawMessage(group.Params))
+	if err != nil {
+		return subscriptionruntime.Observation{}, app_errors.ErrValidation
+	}
+	observer, ok := s.apiKeyObservations.Resolve(target)
+	if !ok {
+		return subscriptionruntime.Observation{}, app_errors.ErrValidation
+	}
+	canonical, _, err := s.decodeCredential(group, credential)
+	if err != nil {
+		return subscriptionruntime.Observation{}, err
+	}
+	defer clear(canonical)
+	validated, err := s.channelRegistry.ValidateCredential(channel.ID(group.ChannelID), canonical)
+	if err != nil {
+		return subscriptionruntime.Observation{}, app_errors.ErrValidation
+	}
+	return observer.Observe(ctx, apikeyobservation.Request{Credential: validated, Target: target})
+}
+
 func (s *Service) loadObservationTarget(ctx context.Context, groupID, credentialID uint) (models.Group, models.Credential, models.CredentialObservation, error) {
 	var group models.Group
 	var credential models.Credential
@@ -645,10 +695,7 @@ func (s *Service) loadObservationTarget(ctx context.Context, groupID, credential
 		if err := tx.Take(&group, groupID).Error; err != nil {
 			return err
 		}
-		if normalizeGroupConnectionType(group.ConnectionType) != models.ConnectionTypeSubscription {
-			return app_errors.ErrValidation
-		}
-		if _, supported := s.subscriptions.QuotaObservation(channel.ID(group.ChannelID)); !supported {
+		if !s.supportsCredentialObservation(group) {
 			return app_errors.ErrValidation
 		}
 		if err := tx.Where("id = ? AND group_id = ?", credentialID, groupID).Take(&credential).Error; err != nil {

@@ -22,6 +22,8 @@
 
 ---
 
+> **本 Fork 维护者及 AI 接手须知：** 本仓库是少数人使用的私人 AI 网关，不是商业平台。请先阅读根 [README 的 Fork 定位与开发约定](README.md#本-fork-的定位与开发约定维护者及-ai-接手必读)及 [阿里云实际运维记录](deploy/aliyun/README.md)，遵循薄定制、保护现有业务、不提交凭据及可回滚发布规则；下面保留上游使用说明。
+
 ## 赞助商
 
 <sub>[成为赞助商](mailto:tangb7420@gmail.com)</sub>

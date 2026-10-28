@@ -1,0 +1,20 @@
+# Merge these entries into the existing Mihomo config; do not replace it.
+# "mjj" is the existing private subscription provider, not a public subscription.
+proxy-groups:
+  - name: GPT-Load Singapore
+    type: fallback
+    use: [mjj]
+    filter: '^🇸🇬 新加坡\|(?:01|02|04)$'
+    url: https://chatgpt.com/cdn-cgi/trace
+    interval: 300
+    lazy: false
+
+listeners:
+  - name: gpt-load-chatgpt
+    type: http
+    listen: 172.17.0.1
+    port: 7892
+    proxy: GPT-Load Singapore
+    users:
+      - username: gptload
+        password: REPLACE_WITH_PRIVATE_RANDOM_PASSWORD

@@ -122,7 +122,11 @@ function decimal(value: unknown): string {
   return result
 }
 export async function getHealth(client: ApiClient, signal: AbortSignal): Promise<HealthReport> {
-  const row = record(await client.request('/api/health', { signal }))
+  return readHealthReport(await client.request('/api/health', { signal }))
+}
+
+export function readHealthReport(value: unknown): HealthReport {
+  const row = record(value)
   return {
     observedAt: integer(row.observed_at_ms),
     statsWindow: integer(row.stats_window_seconds, 1),

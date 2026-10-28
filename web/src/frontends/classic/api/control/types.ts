@@ -129,6 +129,7 @@ export interface GroupRuntimeConfigDto {
   codex_live_mode?: CodexLiveMode
   responses_websocket_enabled?: boolean
   empty_response_retry?: boolean
+  glm_coding_credit_enabled?: boolean
   parameter_overrides?: ParameterOverrideRuleDto[]
 }
 
@@ -144,6 +145,7 @@ export interface GroupEffectiveConfigDto {
   codex_live_mode: CodexLiveMode
   responses_websocket_enabled: boolean
   empty_response_retry: boolean
+  glm_coding_credit_enabled?: boolean
 }
 
 export interface GroupSettingsDto {
@@ -265,6 +267,8 @@ export interface CredentialCreditSummaryDto {
 }
 
 export interface CredentialResetCreditDto {
+  kind?: 'five_hour' | 'week'
+  available?: boolean
   expires_at_ms?: number
 }
 

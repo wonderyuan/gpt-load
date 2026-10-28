@@ -135,6 +135,7 @@ const runtimeSettingFields = [
   'codex_live_mode',
   'responses_websocket_enabled',
   'empty_response_retry',
+  'glm_coding_credit_enabled',
 ] as const
 const groupRuntimeSettingFields = [...runtimeSettingFields, 'parameter_overrides'] as const
 
@@ -155,6 +156,7 @@ export interface GroupRuntimeConfigDto {
   codex_live_mode?: CodexLiveMode
   responses_websocket_enabled?: boolean
   empty_response_retry?: boolean
+  glm_coding_credit_enabled?: boolean
   parameter_overrides?: ParameterOverrideRuleDto[]
 }
 
@@ -170,6 +172,7 @@ export interface GroupEffectiveConfigDto {
   codex_live_mode: CodexLiveMode
   responses_websocket_enabled: boolean
   empty_response_retry: boolean
+  glm_coding_credit_enabled?: boolean
 }
 
 export type {
@@ -409,6 +412,9 @@ function projectRuntimeConfig(
   }
   if (complete || Object.prototype.hasOwnProperty.call(record, 'empty_response_retry')) {
     result.empty_response_retry = projectBoolean(record.empty_response_retry)
+  }
+  if (Object.prototype.hasOwnProperty.call(record, 'glm_coding_credit_enabled')) {
+    result.glm_coding_credit_enabled = projectBoolean(record.glm_coding_credit_enabled)
   }
   if (!complete && Object.prototype.hasOwnProperty.call(record, 'parameter_overrides')) {
     result.parameter_overrides = projectParameterOverrides(record.parameter_overrides)

@@ -24,6 +24,8 @@ import { zhCN as modelManager } from './model-manager'
 import { zhCN as settingsForm } from './settings-form'
 import { zhCN as autoModel } from './auto-model'
 import { zhCN as subscriptions } from './subscriptions'
+import { zhCN as accountQuotas } from '../../features/account-quotas/messages'
+import { zhCN as modelInfo } from '../../features/model-info/messages'
 
 export default {
   credentialBatchTest: credentialTestMessages['zh-CN'],
@@ -43,10 +45,12 @@ export default {
   groupWorkflows,
   parameterRules,
   credentialCards,
+  accountQuotas,
   groupDetail,
   subscriptions,
   modelSelection,
   modelManager,
+  modelInfo,
   settingsForm,
   autoModel,
   groupCreate,
@@ -120,6 +124,7 @@ export default {
     groups: { title: '分组' },
     groupDetail: { title: '分组详情' },
     models: { title: '模型' },
+    modelInfo: { title: modelInfo.title },
     accessKeys: { title: '访问密钥' },
     usage: { title: '用量统计' },
     logs: { title: '请求日志' },

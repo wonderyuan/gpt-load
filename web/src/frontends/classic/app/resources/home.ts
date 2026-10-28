@@ -32,6 +32,7 @@ export type HomeRange = '24h' | '30d'
 export type HomeStatisticsGranularity = 'hour' | 'day'
 
 export interface HomeBaseDto {
+  key_accounting?: { unit: 'glm_coding_credits'; internal_units_per_credit: '0.01' }
   concurrency: import('@shared/concurrency').ConcurrencyView | null
   server_now_ms: number
   started_at_ms: number
@@ -135,6 +136,7 @@ export interface HomeSubscriptionAccountsDto {
 }
 
 const homeBaseFields = [
+  'key_accounting',
   'concurrency',
   'server_now_ms',
   'started_at_ms',
@@ -266,7 +268,16 @@ export function projectHomeBase(value: unknown): HomeBaseDto {
     if (accessKey.id <= previousID) invalidResponse()
     previousID = accessKey.id
   }
+  let accounting: HomeBaseDto['key_accounting']
+  if (record.key_accounting != null) {
+    const unit = projectRecord(record.key_accounting)
+    assertNoSecretLikeFields(unit, ['unit', 'internal_units_per_credit'])
+    if (unit.unit !== 'glm_coding_credits' || unit.internal_units_per_credit !== '0.01')
+      invalidResponse()
+    accounting = { unit: 'glm_coding_credits', internal_units_per_credit: '0.01' }
+  }
   return {
+    ...(accounting ? { key_accounting: accounting } : {}),
     concurrency: record.concurrency == null ? null : readConcurrency(record.concurrency),
     server_now_ms: serverNowMS,
     started_at_ms: startedAtMS,

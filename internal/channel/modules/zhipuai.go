@@ -6,6 +6,8 @@ import (
 	"gpt-load/internal/protocol"
 )
 
+const ZhipuAIQuotaObservation spec.UtilityID = "zhipuai_coding_quota"
+
 func ZhipuAI() spec.Module {
 	return spec.Module{
 		Definition: spec.Definition{
@@ -32,6 +34,9 @@ func ZhipuAI() spec.Module {
 				CatalogProviderID: "zhipuai",
 				EndpointPolicy:    spec.EndpointFixedWithOverride,
 				FixedBaseURL:      "https://open.bigmodel.cn/api/paas/v4",
+			},
+			Capabilities: spec.CapabilityBindings{
+				QuotaObservation: ZhipuAIQuotaObservation,
 			},
 			Routes: []spec.Route{
 				spec.NewRoute(protocol.OpenAICompletions, execution.OperationChatCompletion, execution.RouteNative),

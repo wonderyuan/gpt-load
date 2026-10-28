@@ -174,6 +174,12 @@ func (s *Server) HTTPModule() httproute.Module {
 				)),
 				s.handleDeleteModelPrice,
 			),
+			controlRoute("control.fork.model-info", http.MethodGet, "/fork/model-info", s.handleForkModelInfo),
+			controlRoute("control.fork.home-overview", http.MethodGet, "/fork/home-overview", s.handleForkHomeOverview),
+			controlRoute("control.fork.account-quotas", http.MethodGet, "/fork/account-quotas", s.handleForkAccountQuotas),
+			controlRoute("control.fork.key-quotas", http.MethodGet, "/fork/key-quotas", s.handleForkKeyQuotas),
+			controlRoute("control.fork.access-keys.quota-import", http.MethodPost, "/fork/access-keys/:id/quota-import",
+				s.auditMutation(newMutationDescriptor("fork_key_quota_import", "access_key", accessKeyMutationLocator)), s.handleForkKeyQuotaImport),
 			controlRoute("control.home", http.MethodGet, "/home", s.handleHome),
 			controlRoute(
 				"control.home.subscription-accounts",

@@ -54,13 +54,17 @@ type authSessionRequestBodyRecording struct {
 }
 
 var accessKeyControlRoutes = map[string]struct{}{
-	"/api/auth/session":     {},
-	"/api/home":             {},
-	"/api/home/statistics":  {},
-	"/api/models":           {},
-	"/api/usage":            {},
-	"/api/logs":             {},
-	"/api/logs/:request_id": {},
+	"/api/auth/session":        {},
+	"/api/home":                {},
+	"/api/home/statistics":     {},
+	"/api/models":              {},
+	"/api/fork/model-info":     {},
+	"/api/fork/home-overview":  {},
+	"/api/fork/account-quotas": {},
+	"/api/fork/key-quotas":     {},
+	"/api/usage":               {},
+	"/api/logs":                {},
+	"/api/logs/:request_id":    {},
 }
 
 func retryAfterSeconds(remaining time.Duration) int64 {

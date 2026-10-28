@@ -24,6 +24,8 @@ import { enUS as modelManager } from './model-manager'
 import { enUS as settingsForm } from './settings-form'
 import { enUS as autoModel } from './auto-model'
 import { enUS as subscriptions } from './subscriptions'
+import { enUS as accountQuotas } from '../../features/account-quotas/messages'
+import { enUS as modelInfo } from '../../features/model-info/messages'
 
 export default {
   credentialBatchTest: credentialTestMessages['en-US'],
@@ -43,10 +45,12 @@ export default {
   groupWorkflows,
   parameterRules,
   credentialCards,
+  accountQuotas,
   groupDetail,
   subscriptions,
   modelSelection,
   modelManager,
+  modelInfo,
   settingsForm,
   autoModel,
   groupCreate,
@@ -124,6 +128,7 @@ export default {
     groups: { title: 'Groups' },
     groupDetail: { title: 'Group details' },
     models: { title: 'Models' },
+    modelInfo: { title: modelInfo.title },
     accessKeys: { title: 'Access keys' },
     usage: { title: 'Usage' },
     logs: { title: 'Request logs' },

@@ -207,7 +207,7 @@ const observationAccountFields = [
   'account_created_at_ms',
   'subscription_created_at_ms',
 ] as const
-const resetCreditFields = ['expires_at_ms'] as const
+const resetCreditFields = ['expires_at_ms', 'kind', 'available'] as const
 const creditSummaryFields = ['balance', 'has_credits', 'unlimited', 'observed_at_ms'] as const
 const resetCreditConsumeFields = [
   'status',
@@ -505,9 +505,17 @@ function projectObservationSnapshot(value: unknown): CredentialObservationSnapsh
           reset_credits: projectArray(record.reset_credits, (value) => {
             const credit = projectRecord(value)
             assertNoSecretLikeFields(credit, resetCreditFields)
-            return credit.expires_at_ms === undefined || credit.expires_at_ms === null
-              ? {}
-              : { expires_at_ms: projectEpochMilliseconds(credit.expires_at_ms) }
+            return {
+              ...(credit.expires_at_ms === undefined || credit.expires_at_ms === null
+                ? {}
+                : { expires_at_ms: projectEpochMilliseconds(credit.expires_at_ms) }),
+              ...(credit.kind === undefined
+                ? {}
+                : { kind: projectEnum(credit.kind, ['five_hour', 'week'] as const) }),
+              ...(credit.available === undefined
+                ? {}
+                : { available: projectBoolean(credit.available) }),
+            }
           }),
         }),
   }

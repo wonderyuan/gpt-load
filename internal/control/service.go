@@ -13,6 +13,7 @@ import (
 	"gorm.io/gorm"
 
 	"gpt-load/internal/accessquota"
+	"gpt-load/internal/apikeyobservation"
 	"gpt-load/internal/automodel"
 	"gpt-load/internal/catalog"
 	"gpt-load/internal/channel"
@@ -55,6 +56,7 @@ type Service struct {
 	encryption                        encryption.Service
 	executor                          execution.Executor
 	subscriptions                     *subscriptionruntime.Runtime
+	apiKeyObservations                *apikeyobservation.Registry
 	requestLogs                       RequestLogReader
 	usageStats                        UsageStatReader
 	credentialWindowUsage             credentialWindowUsageReader
@@ -175,16 +177,22 @@ func NewService(
 			break
 		}
 	}
+	apiKeyObservations, err := apikeyobservation.NewRegistry(channelRegistry, apikeyobservation.ZhipuObserver{})
+	if err != nil {
+		// Like channel.NewRegistry, this constructor cannot return startup errors.
+		panic(err)
+	}
 	var subscriptions *subscriptionruntime.Runtime
 	if subscriptionCredentials != nil {
 		subscriptions = subscriptionCredentials.Runtime()
 	}
 	service := &Service{
 		db: db, manager: manager, registry: registry,
-		channelRegistry: channelRegistry,
-		priceRuntime:    priceRuntime,
-		catalogRuntime:  catalogRuntime,
-		encryption:      encryptionService, executor: executor, subscriptions: subscriptions, requestLogs: requestLogs,
+		channelRegistry:    channelRegistry,
+		apiKeyObservations: apiKeyObservations,
+		priceRuntime:       priceRuntime,
+		catalogRuntime:     catalogRuntime,
+		encryption:         encryptionService, executor: executor, subscriptions: subscriptions, requestLogs: requestLogs,
 		usageStats: usageStats, homeStatistics: homeStatistics,
 		stats: stats, mutations: mutations, requestLogStats: requestLogStats, accessQuota: accessQuota,
 		modelDiscoveryTimeout: defaultModelDiscoveryTimeout,

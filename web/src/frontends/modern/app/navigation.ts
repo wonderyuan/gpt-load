@@ -8,6 +8,7 @@ import {
   Layers2,
   ScrollText,
   Settings2,
+  Radar,
 } from '@lucide/vue'
 
 import modernPageRoutes from '../../../../../internal/webui/modern_page_routes.json'
@@ -44,6 +45,14 @@ export const navigationItems = [
     path: pagePath('models'),
     section: 'workspace',
     icon: Boxes,
+    adminOnly: false,
+  },
+  {
+    id: 'modelInfo',
+    name: 'modern-model-info',
+    path: pagePath('model-info'),
+    section: 'workspace',
+    icon: Radar,
     adminOnly: false,
   },
   {

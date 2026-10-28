@@ -40,6 +40,7 @@ const (
 	SettingModelsDevAutoSyncEnabled         = "models_dev_auto_sync_enabled"
 	SettingParameterOverrides               = "parameter_overrides"
 	SettingErrorRules                       = "error_rules"
+	SettingGLMCodingCreditEnabled           = "glm_coding_credit_enabled"
 )
 
 type CodexLiveMode string
@@ -92,6 +93,7 @@ type RuntimeSettings struct {
 }
 
 type ResolvedGroupSettings struct {
+	GLMCodingCreditEnabled    bool
 	ErrorRules                health.ErrorRules
 	ConcurrencyLimit          int64
 	Timeouts                  TimeoutConfig
@@ -383,6 +385,12 @@ func ResolveGroupRuntimeSettings(
 				return ResolvedGroupSettings{}, err
 			}
 			resolved.EmptyResponseRetry = parsed
+		case SettingGLMCodingCreditEnabled:
+			parsed, err := strictBoolean(key, value)
+			if err != nil {
+				return ResolvedGroupSettings{}, err
+			}
+			resolved.GLMCodingCreditEnabled = parsed
 		case SettingParameterOverrides:
 			parsed, err := parameteroverride.Compile(value)
 			if err != nil {

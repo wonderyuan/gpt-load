@@ -38,7 +38,7 @@ import ConnectTerminal from './ConnectTerminal.vue'
 import { readGatewayPreferences, rememberGatewayPreferences } from './gateway-preferences'
 
 const isMobile = useMobileLayout()
-const props = defineProps<{ keys: HomeKey[]; admin: boolean }>()
+const props = defineProps<{ keys: HomeKey[]; admin: boolean; readonly?: boolean }>()
 const { t } = useI18n()
 const client = useApiClient()
 const session = useAuthSession()
@@ -129,7 +129,7 @@ function cancel(): void {
 watch(signature, cancel, { flush: 'sync' })
 onScopeDispose(cancel)
 async function resolveKey(): Promise<string> {
-  if (!key.value) throw new RequestCancelledError()
+  if (props.readonly || !key.value) throw new RequestCancelledError()
   controller?.abort()
   const request = new AbortController()
   controller = request
@@ -242,7 +242,7 @@ async function importClient(): Promise<void> {
               class="modern-connect-field"
             />
             <AppButton
-              v-if="quickImport"
+              v-if="quickImport && !readonly"
               class="modern-connect-import"
               variant="primary"
               size="xs"
@@ -266,13 +266,14 @@ async function importClient(): Promise<void> {
               v-if="isTerminal"
               :key="signature"
               :blocks="blocks"
-              :copyable="Boolean(key) && !missingModel"
+              :readonly="readonly"
+              :copyable="!readonly && Boolean(key) && !missingModel"
             />
             <template v-else>
               <ConnectFields
                 :key="signature"
                 :fields="fields"
-                :copyable="Boolean(key)"
+                :copyable="!readonly && Boolean(key)"
                 :resolve-key="copyKey"
               />
               <div
@@ -284,7 +285,11 @@ async function importClient(): Promise<void> {
                   <span>{{
                     t(selectedClient.id === 'cc-switch' ? 'home.importData' : 'home.fullConfig')
                   }}</span>
-                  <AppCopyValue :value="block.content" :resolve-value="block.resolve">
+                  <AppCopyValue
+                    v-if="!readonly"
+                    :value="block.content"
+                    :resolve-value="block.resolve"
+                  >
                     <template #trigger="{ copy, pending }">
                       <AppButton
                         size="xs"

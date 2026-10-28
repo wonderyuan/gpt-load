@@ -126,6 +126,7 @@ type requestLogPricingReceiptResponse struct {
 	MethodVersion          int                               `json:"method_version"`
 	Currency               string                            `json:"currency"`
 	PricingMode            pricing.Mode                      `json:"pricing_mode"`
+	CodingCredit           *pricing.CodingCreditReceipt      `json:"coding_credit,omitempty"`
 	PriceMultipliers       *pricing.PriceMultipliers         `json:"price_multipliers,omitempty"`
 	Rule                   requestLogPricingIdentityResponse `json:"rule"`
 	ContextThresholdTokens *string                           `json:"context_threshold_tokens"`
@@ -1505,6 +1506,7 @@ func mapRequestLogPricingReceipt(
 		Method:           receipt.Method,
 		MethodVersion:    receipt.MethodVersion,
 		Currency:         receipt.Currency,
+		CodingCredit:     receipt.CodingCredit,
 		PricingMode:      receipt.PricingMode,
 		PriceMultipliers: receipt.PriceMultipliers,
 		Rule:             requestLogPricingIdentityResponse{ModelID: receipt.Rule.ModelID},

@@ -61,6 +61,8 @@ import { getGroupChannels, type GroupCreateResult } from '@modern/api/group-crea
 import { channelSearchOption } from '@modern/components/channel-options'
 import { protocolLabel, protocolOrder } from '@modern/i18n/protocols'
 import { groupFilterQuery as serializeGroupFilters, parseGroupFilters } from './group-route'
+import { useAccountQuotas } from '@modern/features/account-quotas/use-account-quotas'
+import { indexAccountQuotas } from '@modern/features/account-quotas/data'
 
 const { t, n, locale } = useI18n()
 const isMobile = useMobileLayout()
@@ -69,6 +71,12 @@ const mobileFilterCount = computed(
 )
 const client = useApiClient()
 const queryClient = useQueryClient()
+// One shared store-only page for the entire list, never one quota request per group.
+const quotas = useAccountQuotas()
+const quotasByGroup = computed(() => indexAccountQuotas(quotas.data.value?.items ?? []))
+const quotasPartial = computed(() =>
+  Boolean(quotas.data.value && quotas.data.value.total > quotas.data.value.items.length),
+)
 const route = useRoute()
 const router = useRouter()
 const filters = computed(() => parseGroupFilters(route.query))
@@ -405,6 +413,7 @@ usePageRefresh({
   pending: () =>
     query.isFetching.value ||
     usage.isFetching.value ||
+    quotas.isFetching.value ||
     channelCatalog.isFetching.value ||
     credentialCatalog.isFetching.value ||
     filtering.value ||
@@ -423,6 +432,7 @@ async function refresh(): Promise<void> {
     if (!controller.signal.aborted) {
       await Promise.all([
         channelCatalog.refetch(),
+        quotas.refresh(),
         moreFilters.value || credentialFiltering.value ? credentialCatalog.refetch() : undefined,
         usageIDs.value.length ? usage.refetch() : undefined,
         queryClient.invalidateQueries({
@@ -1002,6 +1012,11 @@ useMessageSource(() =>
           :pending="pending.get(group.id)"
           :enabled-override="enabledOverrides.get(group.id)"
           :usage="usageByID.get(group.id)"
+          :quota-admin="quotas.admin.value"
+          :quota-items="quotas.data.value ? (quotasByGroup.get(group.id) ?? []) : undefined"
+          :quota-loading="quotas.isPending.value"
+          :quota-failed="quotas.isError.value"
+          :quota-partial="quotasPartial"
           :usage-loading="usage.isFetching.value"
           :usage-incomplete="usage.data.value?.incomplete ?? false"
           :priority-error="inlineErrors.get(`${group.id}:priority`)"

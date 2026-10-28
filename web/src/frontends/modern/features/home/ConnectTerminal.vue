@@ -8,6 +8,7 @@ import type { ConfigBlock } from './gateway-config'
 defineProps<{
   blocks: (ConfigBlock & { resolve: () => Promise<string> })[]
   copyable: boolean
+  readonly?: boolean
 }>()
 const { t, n } = useI18n()
 const isMobile = useMobileLayout()
@@ -25,7 +26,7 @@ const isMobile = useMobileLayout()
             <AppOverflowText class="modern-connect-step-path" :text="block.label" />
           </template>
         </h3>
-        <AppCopyValue :value="block.content" :resolve-value="block.resolve">
+        <AppCopyValue v-if="!readonly" :value="block.content" :resolve-value="block.resolve">
           <template #trigger="{ copy, pending }">
             <AppButton
               size="xs"
