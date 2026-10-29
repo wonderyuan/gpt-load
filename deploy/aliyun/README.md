@@ -11,7 +11,7 @@
 - 运行目录 `/opt/gpt-load`；单个非 root 容器，SQLite，数据 `/opt/gpt-load/data`。仅发布 `127.0.0.1:3100`，不公开 OAuth 回调或语音端口。
 - Fork：`github.com/wonderyuan/gpt-load`；上游 `github.com/tbphp/gpt-load`。本地无 upstream remote，未擅自添加。
 - 原已提交定制基线为 `65676345b86db6999d14713d966e3201acb13749`（`custom`，应用主提交88c017a9）；上游基线仍为6548ee0e / `v2.0.0-rc.56`。2026-10-29 维护者授权先将全部本地修改提交并推送 GitHub 的 `custom`，再部署首页账号/密钥百分比更新；此前自动重置监测/通知通过下述独立源码快照上线，不能将其base HEAD冒充完整运行源码。
-- 当前固定镜像：`wonderyuan/gpt-load@sha256:829226cb94e835970a6830e24b1adef6f8915d382123b2feeaf64318dae407ec`，版本 `2.0.0-fork-65676345-snapshot-72e47cd4c3ad`，源码指纹 `72e47cd4c3ad3415ccbef0b7795893d0d128fa88bd3140f3b2baa48140c3dca7`，于 2026-10-29 10:01 CST 激活。5小时自然重置不再通知，Key联动保留，周周期及异常恢复仍通知，通知文案已精简。3/4/5组三个联动开关均保持用户当前开启状态。兼容回滚点为前一监测镜像 `207d578a…`。
+- 当前固定镜像：`wonderyuan/gpt-load@sha256:d65b5b251b4517c7bbb96391de662b9beba7d8741d3f59aadae3b56036cf4800`，版本 `2.0.0-fork-9b20f1204815`，应用提交 `9b20f12048154d35f2ba8f482774a2241a77f8d7`，源码指纹 `5329fea2b7a5e426c39f219877e0d7ad25fa2e819fb06890b3b125adb4fbe807`，于 2026-10-29 13:39 CST 激活。首页账号及Key额度金额旁补充已用百分比；此前5小时自然重置静默、Key联动、周周期及异常恢复通知策略保留。3/4/5组三个联动开关均保持用户当前开启状态。兼容回滚点为前一镜像 `829226cb…`。
 - 上一额度总览版本 `wonderyuan/gpt-load@sha256:70d698f3cb56ffda361107dcb2f0f7f2179444b899d968bc83aadd2b32031f1f` 保留；退回旧版前必须先关闭新增credit模式，不能把启用该模式的数据直接给旧二进制启动。
 - 上一稳定镜像 `wonderyuan/gpt-load@sha256:f57b213545b9c02a09b32dfab1bb40becdc2a7eec44526151fc7dfc81c4cd481` 保留，可配套本次发布前备份回滚。
 - 已通过更新/回滚演练的另一镜像：`wonderyuan/gpt-load@sha256:43ce468637eed921580e394986eb6fe2c28fcf751b09d76175023d7bf366183c`，独立 tag `sha-6548ee0ed4cb-prebuilt-20261027T080625Z`。两者应用 SHA 相同，当前已切回原始程序基线。
@@ -267,6 +267,14 @@ GLM官方Pro返回5h总额12000积分、周60000积分，用户授权两人均�
 按维护者要求，仅过滤 `kind=natural && period=18000` 的通知，在完成Key联动决策后标为suppressed并持久保存；不停止额度检测或Key清零/周期对齐。7天自然重置和5小时非预期恢复继续通知。删除通知中的“已脱敏”“两次新观测确认，不推断人工操作原因”“总额度及限制保持不变”等文案，只展示模型、周期、时间和联动结果。
 
 仅运行新增 `TestQuotaResetMonitorNotificationPolicy`，覆盖5小时自然静默、周自然/5小时异常保留及重启不补发，已通过。发布源码相比前一监测版只有通知实现与对应测试变化，未修改重置执行逻辑。构建产物 `build/aliyun-release.fHf2EI`，交付 `/opt/gpt-load/releases/65676345b86db6999d14713d966e3201acb13749-snapshot-72e47cd4c3ad-20261029T014832Z`。维护锁内短停GPT-Load备份 `/opt/gpt-load/backups/notification-policy-20261029T020152Z`，校验副本后切镜像；组3/4/5联动仍true，所有Key/组设置、环境、Compose和其他服务启动时间一致。公网health返回新版本。未发送额外测试通知、未真实重置额度、未跑全量回归。回滚仅恢复pre-activation.env中的前镜像 `207d578a…` 并重建GPT-Load，不回灌旧DB。
+
+### 首页账号与密钥用量百分比（2026-10-29 13:39 CST）
+
+首页账号及Key卡在已用金额/积分旁补充已用百分比，最多一位小数；账号复用上游窗口比例，Key复用native精确账本比例，与进度条一致。原本以百分比展示的账号不重复追加；0%正常显示，未知、过期和零限额不伪造比例。没有修改计费、限额、周期重置或通知逻辑。
+
+维护者要求先推送本地修改：自动重置/通知提交为 `3c6e1464`，百分比展示提交为 `9b20f120`，连同此前定制提交已推送GitHub `custom`；`main`仍为6548ee0e，未强推。从干净提交构建产物 `build/aliyun-release.Y6ptrn`，服务器交付 `/opt/gpt-load/releases/9b20f12048154d35f2ba8f482774a2241a77f8d7-20261029T053547Z`，保存源码、指纹、激活结果和前版本私有配置。
+
+仅验证本次4项百分比渲染用例、正常构建和发布健康/策略/前端产物指纹，未跑全量回归、未调用真实模型、未重置真实额度或发送通知。维护锁内短停GPT-Load，备份 `/opt/gpt-load/backups/quota-percentage-20261029T053921Z`，SQLite副本quick_check与逐文件校验通过。Key/组策略、环境/Compose和OpenViking/通知网关启动时间不变；组3/4/5联动仍true，容器healthy、重启0。兼容回滚仅恢复交付目录的pre-activation.env并重建GPT-Load至 `829226cb…`，保留当前DB，不丢弃上线后的消费。
 
 ## 状态、日志、重启和备份
 
