@@ -46,6 +46,7 @@ export const runtimeSwitches = [
   'affinity_enabled',
   'responses_websocket_enabled',
   'empty_response_retry',
+  'account_quota_reset_sync_enabled',
 ] as const
 export type RuntimeNumber = (typeof runtimeNumbers)[number]
 export type RuntimeSwitch = (typeof runtimeSwitches)[number]

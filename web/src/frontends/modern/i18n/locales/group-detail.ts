@@ -109,6 +109,8 @@ export const zhCN = {
   proxyUnchanged: '留空保留当前代理；修改时填写完整地址。',
   runtime: '运行策略',
   runtimeHelp: '数值留空时继承；超时单位为秒。',
+  accountQuotaResetSyncHelp:
+    '确认上游重置后，仅清零专属本分组 Key 的同周期用量并对齐周期时间；不改限额/有效期/总预算，跨组 Key 不联动；关闭保持独立周期。默认关闭。',
   effective: '当前生效：{value}',
   inherit: '继承',
   override: '覆盖',
@@ -153,6 +155,7 @@ export const zhCN = {
     affinity_enabled: '会话亲和',
     empty_response_retry: '空回检测',
     responses_websocket_enabled: 'Responses WebSocket',
+    account_quota_reset_sync_enabled: '跟随上游重置 Key 用量',
   },
 }
 
@@ -275,6 +278,8 @@ export const enUS: typeof zhCN = {
   proxyUnchanged: 'Leave empty to keep the current proxy. Enter the full URL to replace it.',
   runtime: 'Runtime policy',
   runtimeHelp: 'Empty values inherit. Timeouts are in seconds.',
+  accountQuotaResetSyncHelp:
+    'Confirmed upstream resets clear matching-period usage and align cycle times only for Keys dedicated to this group. Limits, expiry and total budgets stay unchanged; cross-group Keys are skipped. Off keeps independent cycles. Off by default.',
   effective: 'Effective: {value}',
   inherit: 'Inherit',
   override: 'Override',
@@ -320,6 +325,7 @@ export const enUS: typeof zhCN = {
     affinity_enabled: 'Session affinity',
     empty_response_retry: 'Empty response detection',
     responses_websocket_enabled: 'Responses WebSocket',
+    account_quota_reset_sync_enabled: 'Reset Key usage with upstream',
   },
 }
 
@@ -439,6 +445,8 @@ export const jaJP: typeof zhCN = {
     '空欄の場合は現在のプロキシを保持します。変更する場合は完全な URL を入力してください。',
   runtime: '実行ポリシー',
   runtimeHelp: '空欄の数値は継承します。タイムアウトの単位は秒です。',
+  accountQuotaResetSyncHelp:
+    '上流のリセット確認後、このグループ専用 Key の同じ周期の使用量だけをゼロにし、周期時刻を合わせます。上限・有効期限・総予算は変更せず、複数グループの Key は連動しません。無効時は独立した周期を維持します。初期値は無効です。',
   effective: '現在の値：{value}',
   inherit: '継承',
   override: '上書き',
@@ -484,5 +492,6 @@ export const jaJP: typeof zhCN = {
     affinity_enabled: 'セッションアフィニティ',
     empty_response_retry: '空応答の検出',
     responses_websocket_enabled: 'Responses WebSocket',
+    account_quota_reset_sync_enabled: '上流に合わせて Key 使用量をリセット',
   },
 }

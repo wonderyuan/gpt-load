@@ -641,6 +641,37 @@ func TestResolveGroupRuntimeSettingsUsesGroupPrecedence(t *testing.T) {
 	}
 }
 
+func TestGroupAccountQuotaResetSyncDefaultsOff(t *testing.T) {
+	base := DefaultRuntimeSettings()
+	key := SettingAccountQuotaResetSyncEnabled
+	for _, settings := range []config.Settings{nil, {}, {key: false}, {key: true}} {
+		resolved, err := ResolveGroupRuntimeSettings(base, settings)
+		if err != nil {
+			t.Fatalf("ResolveGroupRuntimeSettings(%#v) error = %v", settings, err)
+		}
+		want, _ := settings[key].(bool)
+		if resolved.AccountQuotaResetSyncEnabled != want {
+			t.Errorf("AccountQuotaResetSyncEnabled = %v, want %v for %#v", resolved.AccountQuotaResetSyncEnabled, want, settings)
+		}
+	}
+	for _, value := range []any{nil, "true", "false", 0, 1, json.Number("1"), []any{}, map[string]any{}} {
+		if _, err := ResolveGroupRuntimeSettings(base, config.Settings{key: value}); err == nil {
+			t.Errorf("group accepted non-boolean %s=%#v", key, value)
+		}
+	}
+	if IsRuntimeSettingKey(key) {
+		t.Fatal("group-only quota reset sync is exposed as a system setting")
+	}
+	for _, value := range []bool{false, true} {
+		if _, err := ResolveRuntimeSettings(config.Settings{key: value}); err == nil {
+			t.Errorf("system accepted group-only %s=%v", key, value)
+		}
+		if err := ValidateRuntimeSetting(key, value); err == nil {
+			t.Errorf("system validation accepted group-only %s=%v", key, value)
+		}
+	}
+}
+
 func TestResolveGroupRuntimeSettingsRejectsPresentNullHeaderRules(t *testing.T) {
 	_, err := ResolveGroupRuntimeSettings(
 		DefaultRuntimeSettings(),

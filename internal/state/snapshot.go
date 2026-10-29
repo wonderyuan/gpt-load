@@ -159,31 +159,32 @@ func (rules HeaderRules) ConfiguredNames() []string {
 }
 
 type GroupView struct {
-	GLMCodingCreditEnabled    bool
-	ErrorRules                health.ErrorRules
-	Priority                  int32
-	ConcurrencyLimit          int64
-	PriceMultiplier           pricing.PriceMultiplier
-	ID                        uint
-	Name                      string
-	ChannelID                 channel.ID
-	ConnectionType            string
-	Params                    json.RawMessage
-	ResolvedTarget            channel.ResolvedTarget
-	ValidationProtocol        protocol.Protocol
-	ValidationModel           string
-	ClientProtocols           []protocol.Protocol
-	Models                    []ModelConfig
-	Timeouts                  TimeoutConfig
-	HeaderRules               HeaderRules
-	BlacklistThreshold        int
-	AffinityEnabled           bool
-	CodexLiveMode             CodexLiveMode
-	ResponsesWebsocketEnabled bool
-	EmptyResponseRetry        bool
-	WeightManual              *int
-	Proxy                     outboundproxy.Effective
-	ParameterOverrides        parameteroverride.Rules
+	AccountQuotaResetSyncEnabled bool
+	GLMCodingCreditEnabled       bool
+	ErrorRules                   health.ErrorRules
+	Priority                     int32
+	ConcurrencyLimit             int64
+	PriceMultiplier              pricing.PriceMultiplier
+	ID                           uint
+	Name                         string
+	ChannelID                    channel.ID
+	ConnectionType               string
+	Params                       json.RawMessage
+	ResolvedTarget               channel.ResolvedTarget
+	ValidationProtocol           protocol.Protocol
+	ValidationModel              string
+	ClientProtocols              []protocol.Protocol
+	Models                       []ModelConfig
+	Timeouts                     TimeoutConfig
+	HeaderRules                  HeaderRules
+	BlacklistThreshold           int
+	AffinityEnabled              bool
+	CodexLiveMode                CodexLiveMode
+	ResponsesWebsocketEnabled    bool
+	EmptyResponseRetry           bool
+	WeightManual                 *int
+	Proxy                        outboundproxy.Effective
+	ParameterOverrides           parameteroverride.Rules
 }
 
 type GroupCatalogView struct {
@@ -375,27 +376,28 @@ func Compile(input CompileInput) (*ConfigSnapshot, error) {
 		}
 
 		view := GroupView{
-			ErrorRules:                resolved.ErrorRules,
-			Priority:                  group.Priority,
-			PriceMultiplier:           resolvePriceMultiplier(group.PriceMultiplier),
-			GLMCodingCreditEnabled:    resolved.GLMCodingCreditEnabled,
-			ID:                        group.ID,
-			Name:                      group.Name,
-			ValidationProtocol:        group.ValidationProtocol,
-			ValidationModel:           strings.TrimSpace(group.ValidationModel),
-			Models:                    append([]ModelConfig(nil), group.Models...),
-			Timeouts:                  resolved.Timeouts,
-			HeaderRules:               resolved.HeaderRules,
-			BlacklistThreshold:        resolved.BlacklistThreshold,
-			AffinityEnabled:           resolved.AffinityEnabled,
-			CodexLiveMode:             resolved.CodexLiveMode,
-			ResponsesWebsocketEnabled: resolved.ResponsesWebsocketEnabled,
-			EmptyResponseRetry:        resolved.EmptyResponseRetry,
-			ConcurrencyLimit:          resolved.ConcurrencyLimit,
-			WeightManual:              cloneWeight(group.WeightManual),
-			ConnectionType:            connection.Normalize(group.ConnectionType),
-			Proxy:                     groupProxy,
-			ParameterOverrides:        resolved.ParameterOverrides,
+			AccountQuotaResetSyncEnabled: resolved.AccountQuotaResetSyncEnabled,
+			ErrorRules:                   resolved.ErrorRules,
+			Priority:                     group.Priority,
+			PriceMultiplier:              resolvePriceMultiplier(group.PriceMultiplier),
+			GLMCodingCreditEnabled:       resolved.GLMCodingCreditEnabled,
+			ID:                           group.ID,
+			Name:                         group.Name,
+			ValidationProtocol:           group.ValidationProtocol,
+			ValidationModel:              strings.TrimSpace(group.ValidationModel),
+			Models:                       append([]ModelConfig(nil), group.Models...),
+			Timeouts:                     resolved.Timeouts,
+			HeaderRules:                  resolved.HeaderRules,
+			BlacklistThreshold:           resolved.BlacklistThreshold,
+			AffinityEnabled:              resolved.AffinityEnabled,
+			CodexLiveMode:                resolved.CodexLiveMode,
+			ResponsesWebsocketEnabled:    resolved.ResponsesWebsocketEnabled,
+			EmptyResponseRetry:           resolved.EmptyResponseRetry,
+			ConcurrencyLimit:             resolved.ConcurrencyLimit,
+			WeightManual:                 cloneWeight(group.WeightManual),
+			ConnectionType:               connection.Normalize(group.ConnectionType),
+			Proxy:                        groupProxy,
+			ParameterOverrides:           resolved.ParameterOverrides,
 		}
 		params, err := input.ChannelRegistry.ValidateParams(group.ChannelID, group.Params)
 		if err != nil {

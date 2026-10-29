@@ -43,6 +43,16 @@ with (root / ".maintenance.lock").open("a") as lock:
             private_config = root / name
             if private_config.exists():
                 shutil.copy2(private_config, target / name)
+        for name in ("notification-gateway.json",):
+            private_config = root / name
+            if private_config.is_file():
+                shutil.copy2(private_config, target / name)
+        login_keys = root / "access-keys"
+        if login_keys.is_dir():
+            shutil.copytree(login_keys, target / "access-keys")
+        reset_cursor = root / "data" / "fork-quota-reset-monitor.json"
+        if reset_cursor.is_file():
+            shutil.copy2(reset_cursor, data / reset_cursor.name)
         migration = root / "migrations" / "key-policy-20261028"
         if migration.is_dir():
             saved_migration = target / "key-migration"

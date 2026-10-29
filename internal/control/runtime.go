@@ -30,6 +30,10 @@ type operationRecoveryRuntime interface {
 	RunOperationRecovery(context.Context)
 }
 
+type quotaResetMonitorRuntime interface {
+	RunQuotaResetMonitor(context.Context)
+}
+
 type catalogSyncRuntime interface {
 	Run(context.Context)
 }
@@ -67,6 +71,7 @@ type Runtime struct {
 	requestLogCleaner  RequestLogCleaner
 	stageCleaner       credentialStageCleaner
 	operationRecovery  operationRecoveryRuntime
+	quotaReset         quotaResetMonitorRuntime
 	catalogSync        catalogSyncRuntime
 	cpaModelCatalog    catalogSyncRuntime
 	oauthCallback      *OAuthCallbackManager
@@ -109,6 +114,7 @@ func NewRuntime(
 	}
 	if operationRecovery != nil {
 		runtime.oauthCallback = operationRecovery.oauthCallback
+		runtime.quotaReset = operationRecovery
 	}
 	runtime.validator = newValidationWorker(
 		manager,
@@ -148,6 +154,13 @@ func (runtime *Runtime) Run(ctx context.Context) {
 		go func() {
 			defer wait.Done()
 			runtime.operationRecovery.RunOperationRecovery(ctx)
+		}()
+	}
+	if runtime.quotaReset != nil {
+		wait.Add(1)
+		go func() {
+			defer wait.Done()
+			runtime.quotaReset.RunQuotaResetMonitor(ctx)
 		}()
 	}
 	if runtime.catalogSync != nil {

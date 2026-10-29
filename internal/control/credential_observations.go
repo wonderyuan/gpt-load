@@ -106,6 +106,7 @@ type observationRefreshMode uint8
 const (
 	observationRefreshManual observationRefreshMode = iota
 	observationRefreshAfterReset
+	observationRefreshAutomatic
 )
 
 type observationFlight struct {
@@ -278,7 +279,7 @@ func (s *Service) refreshCredentialObservationOnce(
 		observation, observeErr = s.observeAPIKeyQuota(observeContext, group, credential)
 	}
 	authRefreshVersion := previous.LastAuthRefreshSecretVersion
-	if isSubscription && subscriptionUpstreamHTTPStatus(observeErr) == http.StatusUnauthorized &&
+	if mode != observationRefreshAutomatic && isSubscription && subscriptionUpstreamHTTPStatus(observeErr) == http.StatusUnauthorized &&
 		(previous.LastAuthRefreshSecretVersion == nil ||
 			*previous.LastAuthRefreshSecretVersion != credential.SecretVersion) &&
 		s.prepareSubscriptionCredential != nil {
@@ -455,6 +456,22 @@ func (s *Service) refreshCredentialObservationOnce(
 			providerobservation.QuotaRecovered(providerQuotaWindows(previousSnapshot.QuotaWindows), freshWindows) {
 			s.registry.RestoreObservedQuotaCooldowns(credentialID, observationStartedMS)
 		}
+		if mode == observationRefreshAutomatic && observation.Partial && len(freshWindows) > 0 {
+			// The monitor may use quota evidence even if a non-quota endpoint
+			// (e.g. reset-card inventory) failed. Never expose preserved windows
+			// as fresh evidence; this detached result is automatic-only.
+			fresh := snapshot
+			fresh.QuotaWindows = nil
+			for _, window := range freshWindows {
+				fresh.QuotaWindows = append(fresh.QuotaWindows, ObservationQuotaWindow{
+					SourceID: window.SourceID, ID: window.ID, Scope: window.Scope, Unit: window.Unit,
+					Used: window.Used, Limit: window.Limit, Utilization: window.Utilization,
+					ResetAtMS: window.ResetAtMS, WindowSeconds: window.WindowSeconds,
+					ModelIDs: window.ModelIDs, State: window.State, IsPrimary: window.IsPrimary,
+				})
+			}
+			response.Snapshot, response.LastErrorCode = &fresh, ""
+		}
 		return response, nil
 	}
 	var response CredentialObservationResponse
@@ -464,7 +481,7 @@ func (s *Service) refreshCredentialObservationOnce(
 	} else {
 		s.mutations.Do(credentialID, func() { response, finishErr = finish() })
 	}
-	if finishErr == nil {
+	if finishErr == nil && mode != observationRefreshAutomatic {
 		s.enrichCredentialObservationUsage(ctx, credentialID, &response)
 	}
 	return response, finishErr

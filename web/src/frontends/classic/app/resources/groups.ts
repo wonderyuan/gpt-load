@@ -136,6 +136,7 @@ const runtimeSettingFields = [
   'responses_websocket_enabled',
   'empty_response_retry',
   'glm_coding_credit_enabled',
+  'account_quota_reset_sync_enabled',
 ] as const
 const groupRuntimeSettingFields = [...runtimeSettingFields, 'parameter_overrides'] as const
 
@@ -157,6 +158,7 @@ export interface GroupRuntimeConfigDto {
   responses_websocket_enabled?: boolean
   empty_response_retry?: boolean
   glm_coding_credit_enabled?: boolean
+  account_quota_reset_sync_enabled?: boolean
   parameter_overrides?: ParameterOverrideRuleDto[]
 }
 
@@ -173,6 +175,7 @@ export interface GroupEffectiveConfigDto {
   responses_websocket_enabled: boolean
   empty_response_retry: boolean
   glm_coding_credit_enabled?: boolean
+  account_quota_reset_sync_enabled?: boolean
 }
 
 export type {
@@ -415,6 +418,11 @@ function projectRuntimeConfig(
   }
   if (Object.prototype.hasOwnProperty.call(record, 'glm_coding_credit_enabled')) {
     result.glm_coding_credit_enabled = projectBoolean(record.glm_coding_credit_enabled)
+  }
+  if (Object.prototype.hasOwnProperty.call(record, 'account_quota_reset_sync_enabled')) {
+    result.account_quota_reset_sync_enabled = projectBoolean(
+      record.account_quota_reset_sync_enabled,
+    )
   }
   if (!complete && Object.prototype.hasOwnProperty.call(record, 'parameter_overrides')) {
     result.parameter_overrides = projectParameterOverrides(record.parameter_overrides)

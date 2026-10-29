@@ -550,9 +550,11 @@ useMessageSource(() => (error.value ? { text: error.value, tone: 'danger' } : un
             :label="t('groupDetail.runtimeFields.' + key)"
             :options="switchOptions"
             :hint="
-              t('groupDetail.effective', {
-                value: t(saved.effective[key] ? 'groupDetail.on' : 'groupDetail.off'),
-              })
+              key === 'account_quota_reset_sync_enabled'
+                ? t('groupDetail.accountQuotaResetSyncHelp')
+                : t('groupDetail.effective', {
+                    value: t(saved.effective[key] ? 'groupDetail.on' : 'groupDetail.off'),
+                  })
             "
             size="sm"
             :disabled="busy"

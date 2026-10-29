@@ -41,6 +41,7 @@ const (
 	SettingParameterOverrides               = "parameter_overrides"
 	SettingErrorRules                       = "error_rules"
 	SettingGLMCodingCreditEnabled           = "glm_coding_credit_enabled"
+	SettingAccountQuotaResetSyncEnabled     = "account_quota_reset_sync_enabled"
 )
 
 type CodexLiveMode string
@@ -93,17 +94,18 @@ type RuntimeSettings struct {
 }
 
 type ResolvedGroupSettings struct {
-	GLMCodingCreditEnabled    bool
-	ErrorRules                health.ErrorRules
-	ConcurrencyLimit          int64
-	Timeouts                  TimeoutConfig
-	HeaderRules               HeaderRules
-	BlacklistThreshold        int
-	AffinityEnabled           bool
-	CodexLiveMode             CodexLiveMode
-	ResponsesWebsocketEnabled bool
-	EmptyResponseRetry        bool
-	ParameterOverrides        parameteroverride.Rules
+	AccountQuotaResetSyncEnabled bool
+	GLMCodingCreditEnabled       bool
+	ErrorRules                   health.ErrorRules
+	ConcurrencyLimit             int64
+	Timeouts                     TimeoutConfig
+	HeaderRules                  HeaderRules
+	BlacklistThreshold           int
+	AffinityEnabled              bool
+	CodexLiveMode                CodexLiveMode
+	ResponsesWebsocketEnabled    bool
+	EmptyResponseRetry           bool
+	ParameterOverrides           parameteroverride.Rules
 }
 
 func DefaultRuntimeSettings() RuntimeSettings {
@@ -391,6 +393,12 @@ func ResolveGroupRuntimeSettings(
 				return ResolvedGroupSettings{}, err
 			}
 			resolved.GLMCodingCreditEnabled = parsed
+		case SettingAccountQuotaResetSyncEnabled:
+			parsed, err := strictBoolean(key, value)
+			if err != nil {
+				return ResolvedGroupSettings{}, err
+			}
+			resolved.AccountQuotaResetSyncEnabled = parsed
 		case SettingParameterOverrides:
 			parsed, err := parameteroverride.Compile(value)
 			if err != nil {

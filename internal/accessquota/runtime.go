@@ -102,11 +102,12 @@ type CompletionResult struct {
 }
 
 type Runtime struct {
-	mu             sync.RWMutex
-	entries        map[uint]*accessKeyEntry
-	restored       map[uint]RestoredState
-	restorePending bool
-	dirtyNotifier  func()
+	mu              sync.RWMutex
+	entries         map[uint]*accessKeyEntry
+	restored        map[uint]RestoredState
+	restorePending  bool
+	dirtyNotifier   func()
+	periodicRebases map[periodicRebaseKey]periodicRebaseSeed
 
 	overflowFaultTotal atomic.Uint64
 }
@@ -198,6 +199,7 @@ func (runtime *Runtime) Reconcile(definitions map[uint][]Rule) error {
 	}
 
 	next := make(map[uint]*accessKeyEntry, len(normalized))
+	var consumedRebases []periodicRebaseKey
 	for accessKeyID, rules := range normalized {
 		if len(rules) == 0 {
 			continue
@@ -207,7 +209,18 @@ func (runtime *Runtime) Reconcile(definitions map[uint][]Rule) error {
 			current.mu.Lock()
 			for _, rule := range entry.rules {
 				previous := current.byID[rule.definition.ID]
-				if previous == nil || previous.definition.Revision != rule.definition.Revision {
+				if previous == nil {
+					continue
+				}
+				if previous.definition.Revision != rule.definition.Revision {
+					key, applied, err := runtime.applyPeriodicRebaseLocked(accessKeyID, rule)
+					if err != nil {
+						current.mu.Unlock()
+						return err
+					}
+					if applied {
+						consumedRebases = append(consumedRebases, key)
+					}
 					continue
 				}
 				if previous.definition.Kind != rule.definition.Kind ||
@@ -225,6 +238,9 @@ func (runtime *Runtime) Reconcile(definitions map[uint][]Rule) error {
 		next[accessKeyID] = entry
 	}
 	runtime.entries = next
+	for _, key := range consumedRebases {
+		delete(runtime.periodicRebases, key)
+	}
 	return nil
 }
 
