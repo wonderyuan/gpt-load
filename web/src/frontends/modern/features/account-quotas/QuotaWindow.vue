@@ -82,6 +82,9 @@ const amount = (value?: number) =>
         <span class="modern-account-quota-window-value" tabindex="0" :aria-label="exactEstimate">
           {{ t('accountQuotas.used') }} {{ estimate.estimated ? '≈' : ''
           }}{{ cycleAmount(estimate.used) }} / {{ cycleAmount(estimate.total) }} {{ estimateUnit }}
+          <template v-if="percent !== undefined">
+            · {{ n(percent, { maximumFractionDigits: 1 }) }}%
+          </template>
         </span>
       </AppTooltip>
       <span v-else class="modern-account-quota-window-value">
@@ -93,6 +96,11 @@ const amount = (value?: number) =>
               ? '—'
               : n(percent, { maximumFractionDigits: 1 }) + '%'
         }}
+        <template
+          v-if="percent !== undefined && window.used !== undefined && window.unit !== 'percent'"
+        >
+          · {{ n(percent, { maximumFractionDigits: 1 }) }}%
+        </template>
       </span>
     </div>
     <AppProgressBar

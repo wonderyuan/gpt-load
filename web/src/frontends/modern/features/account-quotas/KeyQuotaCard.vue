@@ -40,7 +40,7 @@ const props = withDefaults(
   { readonly: false },
 )
 defineEmits<{ select: [value: boolean] }>()
-const { t, locale } = useI18n()
+const { t, n, locale } = useI18n()
 const now = useClock()
 const entries = computed(() => keyDisplayEntries(props.item))
 const scope = computed(() =>
@@ -161,6 +161,9 @@ function tone(window?: KeyQuotaWindow): 'neutral' | 'success' | 'warning' | 'dan
           <AppTooltip v-if="used(entry) !== undefined" :label="exactValue(entry)" touchable>
             <span class="modern-key-quota-amount" tabindex="0" :aria-label="exactValue(entry)">
               {{ t('accountQuotas.used') }} <strong>{{ amount(used(entry)) }}</strong> {{ unit }}
+              <template v-if="percent(entry) !== undefined">
+                · {{ n(percent(entry)!, { maximumFractionDigits: 1 }) }}%
+              </template>
             </span>
           </AppTooltip>
           <span v-else class="modern-key-quota-note">{{
