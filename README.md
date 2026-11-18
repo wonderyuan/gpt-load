@@ -60,16 +60,6 @@ English · [中文](README_CN.md) · [日本語](README_JP.md) | [Official Websi
 <details open>
 <summary>Sponsor details (collapsible)</summary>
 
-<a href="https://modelflare.dev/sign-up?utm_source=github&amp;utm_campaign=gptload" target="_blank" rel="sponsored noopener noreferrer"><img src="./screenshot/modelflare-banner-en.png" alt="Modelflare"></a>
-
-Thanks to Modelflare for sponsoring this project! Modelflare: Full strength, stable, nothing watered down. Global SOTA models at a lower cost. Operated by US-based Havenbyte LLC, Modelflare supports GPT, Claude, Gemini, Grok, and other leading models through common compatible protocols, plus 40+ image and video models.
-
-**Cache compensation** is a highlight: selected OpenAI groups (price-first, stable, and premium) guarantee daily cache hit rates of 65%, 75%, or 85%, and if eligible requests fall short, Modelflare refunds the difference, visible on the usage dashboard after settlement.
-
-**Special offers**: a single top-up of US&#36;20 unlocks the GPT discount group at a 0.015x price multiplier, and a single top-up of US&#36;50 unlocks the Claude discount group at a 0.03x multiplier. Register via <a href="https://modelflare.dev/sign-up?utm_source=github&amp;utm_campaign=gptload" target="_blank" rel="sponsored noopener noreferrer">this exclusive link</a> to get started.
-
----
-
 <table>
 <tbody>
 <tr>
@@ -103,6 +93,12 @@ Your application only needs one base URL and one AccessKey. Providers, accounts,
 - **One mechanism for API keys and subscriptions** — Codex, Claude, Antigravity, Grok, and API-key channels share credential management, scheduling, and health handling.
 - **Scheduling and failure isolation built in** — Multi-credential scheduling, configurable weights, retries, cooldown, blacklisting, and session affinity reduce the impact of overloaded or failing credentials.
 - **Observable, self-hosted, and simple to deploy** — Inspect health, routes, logs, usage, and cost estimates in an embedded UI backed by SQLite, MySQL, or PostgreSQL with local credential encryption.
+
+## Online demo
+
+[https://demo.gpt-load.com](https://demo.gpt-load.com)
+
+Login key: `gpt-load-demo`
 
 ## Quick start
 
@@ -175,7 +171,8 @@ When working over SSH or from a remote browser, the browser's `localhost` may no
 | OpenAI Images           | `POST /v1/images/...`                                              |
 | OpenAI Embeddings       | `POST /v1/embeddings`                                              |
 | Rerank                  | `POST /v1/rerank`                                                  |
-| Mistral native          | `/v1/ocr`, `/v1/audio/...` |
+| Audio Speech            | `POST /v1/audio/speech`                                            |
+| Mistral native          | `/v1/ocr`, `/v1/audio/transcriptions` |
 | Anthropic Messages      | `POST /v1/messages`                                                |
 | Gemini                  | `/v1beta/models/...`                                               |
 | Gemini Embeddings       | `POST /v1beta/models/{model}:embedContent` / `:batchEmbedContents` |
@@ -263,6 +260,7 @@ At startup, the application reads `.env` in the current directory; existing proc
 | `HTTP_PROXY` | Empty | Environment proxy for HTTP upstream requests. |
 | `HTTPS_PROXY` | Empty | Environment proxy for HTTPS upstream requests. |
 | `NO_PROXY` | Empty | Comma-separated hosts, domains, or IPs that bypass the environment proxy. |
+| `UPSTREAM_USER_AGENT_FALLBACK` | Empty, uses `GPT-Load/<version>` | Fallback User-Agent for ordinary-channel API requests, credential probes, model discovery, and Responses WebSocket handshakes. Used only when the final UA is missing, empty, or whitespace-only after header rules; nonempty rule/client values take precedence. Example: `Go-http-client/1.1` (fixed, not protocol-dependent). Subscription adapter identities are unchanged. Restart after changes. |
 | `LOG_LEVEL` | `info` | Supports `panic`, `fatal`, `error`, `warn`, `warning`, `info`, `debug`, and `trace`; invalid values warn and fall back to `info`. |
 | `LOG_FORMAT` | `text` | Supports `text` and `json`; any other value fails startup. |
 | `MODELS_DEV_AUTO_SYNC_ENABLED` | Unset, initial default `true` | When unset, uses the persisted management UI setting; when set, forces Models.dev auto-sync on or off and makes the same UI option read-only. |

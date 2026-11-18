@@ -37,6 +37,11 @@ export interface ResetCreditDetail {
   expiresAt?: number
 }
 export interface CredentialObservation {
+  subscription?: {
+    state: 'confirmed' | 'error' | 'unavailable'
+    periodEnd?: number
+    willRenew?: boolean
+  }
   state: 'fresh' | 'stale' | 'refreshing' | 'error' | 'unavailable'
   observedAt: number | null
   error?: string
@@ -90,7 +95,16 @@ export function readObservation(value: unknown): CredentialObservation | undefin
       expiresAt: optionalTime(card.expires_at_ms),
     }
   })
+  const subscription = snapshot?.subscription == null ? undefined : record(snapshot.subscription)
   return {
+    subscription: subscription
+      ? {
+          state: oneOf(subscription.state, ['confirmed', 'error', 'unavailable']),
+          periodEnd: optionalTime(subscription.period_end_ms),
+          willRenew:
+            subscription.will_renew === undefined ? undefined : boolean(subscription.will_renew),
+        }
+      : undefined,
     state: oneOf(data.state, ['fresh', 'stale', 'refreshing', 'error', 'unavailable']),
     observedAt: data.observed_at_ms == null ? null : integer(data.observed_at_ms),
     error: data.last_error_code === undefined ? undefined : text(data.last_error_code),

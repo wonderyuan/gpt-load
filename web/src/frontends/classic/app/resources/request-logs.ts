@@ -61,6 +61,7 @@ export type RequestLogOperation =
   | 'embeddings_create'
   | 'rerank'
   | 'decisions_create'
+  | 'audio_speech'
   | 'mistral_ocr'
   | 'mistral_fim'
   | 'mistral_audio_transcription'
@@ -322,6 +323,7 @@ const operations = [
   'embeddings_create',
   'rerank',
   'decisions_create',
+  'audio_speech',
   'mistral_ocr',
   'mistral_fim',
   'mistral_audio_transcription',

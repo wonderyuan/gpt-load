@@ -470,6 +470,7 @@ function decisionRuleLabel(ruleID: string): string {
             {{ log.request_id }}
           </OverflowTooltip>
           <CopyButton
+            compact
             :value="log.request_id"
             :label="t('monitor.logs.drawer.copyRequestId')"
             :success-label="t('common.copied')"
@@ -483,9 +484,10 @@ function decisionRuleLabel(ruleID: string): string {
         <dl class="log-detail__grid">
           <div>
             <dt>{{ t('monitor.logs.columns.clientIP') }}</dt>
-            <dd>
+            <dd class="log-detail__ip">
               <template v-if="log.client_ip">
                 <AppButton
+                  class="log-detail__ip-filter"
                   variant="link"
                   size="inline"
                   :aria-label="t('monitor.logs.filterIP', { value: log.client_ip })"
@@ -494,6 +496,7 @@ function decisionRuleLabel(ruleID: string): string {
                   {{ log.client_ip }}
                 </AppButton>
                 <CopyButton
+                  compact
                   :value="log.client_ip"
                   :label="t('monitor.logs.copyIP')"
                   :success-label="t('common.copied')"
@@ -588,10 +591,11 @@ function decisionRuleLabel(ruleID: string): string {
           <div>
             <dt>{{ t('monitor.logs.drawer.clientModel') }}</dt>
             <dd class="log-detail__model-value">
-              <code>{{ log.client_model ?? '—' }}</code
-              ><small v-if="reasoningLabel(log.reasoning)" class="log-detail__reasoning">{{
-                reasoningLabel(log.reasoning)
-              }}</small>
+              <code>{{ log.client_model ?? '—' }}</code><small
+                v-if="reasoningLabel(log.reasoning)"
+                class="log-detail__reasoning"
+                >{{ reasoningLabel(log.reasoning) }}</small
+              >
             </dd>
           </div>
         </dl>
@@ -748,8 +752,7 @@ function decisionRuleLabel(ruleID: string): string {
           <div>
             <dt>{{ t('monitor.logs.drawer.upstreamModel') }}</dt>
             <dd class="log-detail__model-value">
-              <code>{{ log.upstream_model ?? '—' }}</code
-              ><small
+              <code>{{ log.upstream_model ?? '—' }}</code><small
                 v-if="
                   upstreamReasoningLabel(
                     finalAttempt?.reasoning ?? null,
@@ -1123,10 +1126,17 @@ function decisionRuleLabel(ruleID: string): string {
   padding: 0;
 }
 
-.log-detail__request-id :deep(.copy-control button) {
-  width: 28px;
-  height: 28px;
-  border-color: transparent;
+.log-detail__ip {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.log-detail__ip-filter {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  white-space: normal;
+  text-align: left;
 }
 
 .log-detail__section {

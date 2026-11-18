@@ -48,7 +48,7 @@ import (
 )
 
 // BuildContainer creates the 2.0 runtime foundation dependency graph.
-func BuildContainer() (*dig.Container, error) {
+func BuildContainer(configure ...func(*dig.Container) error) (*dig.Container, error) {
 	dependencyContainer := dig.New()
 
 	providers := []any{
@@ -176,6 +176,7 @@ func BuildContainer() (*dig.Container, error) {
 		dialect.NewAnthropic,
 		dialect.NewGemini,
 		dialect.NewGeminiEmbeddings,
+		dialect.NewAudioSpeech,
 		dialect.NewMistral,
 		func(
 			openAI *dialect.OpenAI,
@@ -187,14 +188,16 @@ func BuildContainer() (*dig.Container, error) {
 			anthropic *dialect.Anthropic,
 			gemini *dialect.Gemini,
 			geminiEmbeddings *dialect.GeminiEmbeddings,
+			audioSpeech *dialect.AudioSpeech,
 			mistral *dialect.Mistral,
 		) dialect.Set {
 			return dialect.NewSet(
-				openAI, openAIResponses, openAIImages, openAIEmbeddings, rerank, decisions, anthropic, gemini, geminiEmbeddings, mistral,
+				openAI, openAIResponses, openAIImages, openAIEmbeddings, rerank, decisions, anthropic, gemini, geminiEmbeddings,
+				audioSpeech, mistral,
 			)
 		},
-		func(registry *channel.Registry) (*bifrostexecutor.RuntimeManager, error) {
-			return bifrostexecutor.NewManagedRuntime(registry)
+		func(registry *channel.Registry, cfg *config.Config) (*bifrostexecutor.RuntimeManager, error) {
+			return bifrostexecutor.NewManagedRuntime(registry, cfg.UpstreamUserAgentFallback)
 		},
 		func(adapters *provideradapter.Registry, quotaRuntime *accessquota.Runtime, credentials *state.CredentialRegistry) *state.Manager {
 			manager := state.NewManager()
@@ -257,6 +260,12 @@ func BuildContainer() (*dig.Container, error) {
 
 	for _, provider := range providers {
 		if err := dependencyContainer.Provide(provider); err != nil {
+			return nil, err
+		}
+	}
+	// Demo 在解析依赖前替换配置和后台任务；普通启动不传入任何覆盖。
+	for _, setup := range configure {
+		if err := setup(dependencyContainer); err != nil {
 			return nil, err
 		}
 	}
@@ -332,10 +341,13 @@ func newProviderAdapterRegistry(
 		{ProviderKind: channel.ProviderJev, Adapter: bifrost},
 		{ProviderKind: channel.ProviderGroq, Adapter: bifrost},
 		{ProviderKind: channel.ProviderXAI, Adapter: bifrost},
+		{ProviderKind: channel.ProviderAlibaba, Adapter: bifrost},
 		{ProviderKind: channel.ProviderCodex, Adapter: cpa},
 		{ProviderKind: channel.ProviderClaude, Adapter: cpa},
 		{ProviderKind: channel.ProviderAntigravity, Adapter: cpa},
 		{ProviderKind: channel.ProviderGrok, Adapter: cpa},
+		{ProviderKind: channel.ProviderMuse, Adapter: cpa},
+		{ProviderKind: channel.ProviderDevin, Adapter: cpa},
 	}
 	return provideradapter.NewRegistry(channels, bindings)
 }
