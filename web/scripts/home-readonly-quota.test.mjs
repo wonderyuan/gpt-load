@@ -257,7 +257,7 @@ function binding(node, name) {
   return directive(node, 'bind', name)?.exp?.content
 }
 const compiled = new Map()
-for (const name of ['AccountQuotasPanel', 'AccountQuotaCard', 'KeyQuotaCard']) {
+for (const name of ['AccountQuotasPanel', 'AccountQuotaCard', 'KeyQuotaCard', 'QuotaWindow']) {
   const filename = name + '.vue'
   const source = readFileSync(new URL('../src/frontends/modern/features/account-quotas/' + filename, import.meta.url), 'utf8')
   const parsed = parse(source, { filename })
@@ -272,8 +272,68 @@ for (const name of ['AccountQuotasPanel', 'AccountQuotaCard', 'KeyQuotaCard']) {
     })
     assert.deepEqual(template.errors, [])
   })
-  compiled.set(name, { source, nodes: elements(parsed.descriptor.template.ast) })
+  compiled.set(name, { source, descriptor: parsed.descriptor, nodes: elements(parsed.descriptor.template.ast) })
 }
+
+async function quotaWindowTitleFor(window, translations = {}) {
+  const presentation = await import('../src/frontends/modern/features/groups/credential-presentation.ts')
+  const script = compileScript(compiled.get('QuotaWindow').descriptor, { id: 'QuotaWindow' })
+  const { outputText } = ts.transpileModule(script.content, {
+    compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS },
+  })
+  const dependencies = {
+    vue: await import('vue'),
+    'vue-i18n': {
+      useI18n: () => ({
+        t: (key) => translations[key] ?? key,
+        te: (key) => Object.hasOwn(translations, key),
+        n: String,
+        locale: ref('en'),
+      }),
+    },
+    '@modern/components/ui/clock': { useClock: () => ref(0) },
+    '@modern/features/groups/credential-presentation': presentation,
+    // These dependencies are not evaluated by the title computed property.
+    '@modern/components/ui': {},
+    './data': {},
+  }
+  const exports = {}
+  new Function('require', 'exports', outputText)((specifier) => {
+    assert.ok(Object.hasOwn(dependencies, specifier), `unexpected dependency: ${specifier}`)
+    return dependencies[specifier]
+  }, exports)
+  return exports.default.setup({ window }, { expose() {} }).title.value
+}
+
+test('QuotaWindow simplifies only account-scoped 5h and 7d titles', async () => {
+  for (const [windowSeconds, expected] of [[18000, '5h'], [604800, '7d']]) {
+    assert.equal(await quotaWindowTitleFor({
+      scope: 'account', models: [], windowSeconds, label: 'Account quota', labelKey: 'weekly',
+    }, { 'credentialCards.quotaLabels.weekly': 'Weekly quota' }), expected)
+  }
+  assert.equal(await quotaWindowTitleFor({
+    scope: 'account', models: [], windowSeconds: 86400, label: 'Daily quota',
+  }), 'Daily quota · 1d', 'other account periods retain the existing title formatter')
+})
+
+test('QuotaWindow preserves model and surface titles through existing i18n and label fallback', async () => {
+  const cases = [
+    { scope: 'model', models: ['claude-opus'], labelKey: 'opus', label: 'Opus' },
+    { scope: 'model', models: ['claude-sonnet'], labelKey: 'sonnet', label: 'Sonnet' },
+    { scope: 'surface', models: [], labelKey: 'oauthApps', label: 'OAuth apps' },
+  ]
+  for (const windowSeconds of [18000, 604800]) {
+    for (const window of cases) {
+      const key = 'credentialCards.quotaLabels.' + window.labelKey
+      const translated = 'Localized ' + window.label
+      assert.equal(await quotaWindowTitleFor({ ...window, windowSeconds }, {
+        [key]: translated,
+      }), translated)
+      assert.equal(await quotaWindowTitleFor({ ...window, windowSeconds }), window.label)
+      assert.equal(await quotaWindowTitleFor({ ...window, windowSeconds, labelKey: undefined }), window.label)
+    }
+  }
+})
 
 test('panel only exposes mutation buttons, dialogs and group-management links to admin', () => {
   const { source, nodes } = compiled.get('AccountQuotasPanel')
@@ -320,7 +380,7 @@ test('readonly account card preserves count, expiry details and expansion but no
   const expand = nodes.find(({ node }) => directive(node, 'on', 'click')?.exp?.content === 'cardsExpanded = !cardsExpanded')
   assert.equal(condition(expand.node), undefined)
   assert.equal(binding(expand.node, 'aria-expanded'), 'cardsExpanded')
-  assert.equal(expand.parents.some((parent) => parent.type === 1 && condition(parent) === 'resetSupported || cards.length'), true)
+  assert.equal(expand.parents.some((parent) => parent.type === 1 && condition(parent) === 'resetSupported || cards.length || autoResetCredit'), true)
   assert.match(source, /resetCount === undefined \? '—' : n\(resetCount\)/u)
   assert.match(source, /credentialTime\(card.expiresAt, locale\)/u)
   assert.match(source, /v-show="cardsExpanded"/u)

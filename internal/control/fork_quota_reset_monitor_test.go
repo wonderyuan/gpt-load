@@ -98,45 +98,22 @@ func TestQuotaResetSyncDedicatedKeysTotalPreservedIncludingKey10(t *testing.T) {
 	for _, id := range []uint{all, multi, cross, inactive} {
 		untouched[id] = fixture.accessQuota.Snapshot(id, now)
 	}
-	// Old requests must retain total/other-period accounting, but not charge the
-	// replaced period's revised generation after publication.
-	oldTicket, _ := fixture.accessQuota.Admit(selected, now)
+	// Native usage without a complete retained ledger is no longer permission
+	// to zero a key, including the formerly protected ID 10.
 	event := quotaResetTestEvent(t, fixture, groupID, credentialID, now)
 	result, err := fixture.service.syncQuotaReset(t.Context(), event)
-	if err != nil || result.Keys != 10 || !result.Enabled {
+	if err != nil || result.Reason != "ledger_not_ready" || !result.Enabled || result.Keys != 0 {
 		t.Fatalf("sync = %#v, %v", result, err)
 	}
-	after := fixture.accessQuota.Snapshot(selected, now)
-	if after.Rules[0] != before.Rules[0] || !reflect.DeepEqual(after.Rules[2], before.Rules[2]) || after.Rules[1].UsedNanoUSD != 0 || after.Rules[1].Revision != before.Rules[1].Revision+1 || *after.Rules[1].WindowEndsAtMS != event.EndMS {
-		t.Fatalf("unsafe rebase before=%#v after=%#v", before, after)
-	}
-	fixture.accessQuota.Complete(oldTicket, 1_000_000_000)
-	afterOld := fixture.accessQuota.Snapshot(selected, now)
-	if afterOld.Rules[1].UsedNanoUSD != 0 || afterOld.Rules[0].UsedNanoUSD != 2_000_000_000 || afterOld.Rules[2].UsedNanoUSD != 2_000_000_000 {
-		t.Fatalf("old ticket = %#v", afterOld)
+	if after := fixture.accessQuota.Snapshot(selected, now); !reflect.DeepEqual(after, before) {
+		t.Fatal("missing ledger cleared Key 10")
 	}
 	for id, before := range untouched {
 		if after := fixture.accessQuota.Snapshot(id, now); !reflect.DeepEqual(after, before) {
 			t.Fatalf("out-of-scope key %d changed", id)
 		}
 	}
-	// Permanent receipt survives canonical result compaction and never clears new
-	// usage, even if a process crashes after SQL commit but before JSON progress.
-	ticket, _ := fixture.accessQuota.Admit(selected, now)
-	fixture.accessQuota.Complete(ticket, 100_000_000)
-	if err := fixture.db.Model(&models.ControlOperation{}).Where("idempotency_key = ?", event.ID).Update("canonical_result", nil).Error; err != nil {
-		t.Fatal(err)
-	}
-	if _, err := fixture.service.syncQuotaReset(t.Context(), event); err != nil {
-		t.Fatal(err)
-	}
-	if got := fixture.accessQuota.Snapshot(selected, now).Rules[1].UsedNanoUSD; got != 100_000_000 {
-		t.Fatalf("receipt replay cleared new usage: %d", got)
-	}
-	var receipt models.ControlOperation
-	if err := fixture.db.Where("idempotency_key = ?", event.ID).Take(&receipt).Error; err != nil || receipt.CompletedAtMS == nil || receipt.OperationKind != quotaResetSyncKind {
-		t.Fatalf("terminal receipt %#v %v", receipt, err)
-	}
+
 }
 
 func TestQuotaResetSyncOffAndAmbiguousTargetsDoNotWrite(t *testing.T) {

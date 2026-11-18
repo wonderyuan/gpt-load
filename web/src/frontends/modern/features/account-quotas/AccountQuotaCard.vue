@@ -1,12 +1,20 @@
 <script setup lang="ts">
 import { ChevronDown, ChevronUp } from '@lucide/vue'
-import { computed, ref, useId } from 'vue'
+import { computed, onScopeDispose, ref, useId, watch } from 'vue'
+import { useQueryClient } from '@tanstack/vue-query'
+import { useApiClient } from '@shared/http/client-context'
+import { useAuthSession } from '@modern/features/auth/auth-session'
 import { useI18n } from 'vue-i18n'
 import { RouterLink } from 'vue-router'
-import type { AccountQuotaItem } from '@modern/api/fork-account-quotas'
+import {
+  accountQuotasKey,
+  setAccountAutoResetCredit,
+  type AccountQuotaItem,
+  type AccountQuotaPage,
+} from '@modern/api/fork-account-quotas'
 import type { ResetCreditKind } from '@modern/api/credential-observation'
 import type { GroupChannel } from '@modern/api/group-create'
-import { AppBadge, AppButton, AppChannelIcon } from '@modern/components/ui'
+import { AppBadge, AppButton, AppChannelIcon, AppSwitch, AppTooltip } from '@modern/components/ui'
 import { useClock } from '@modern/components/ui/clock'
 import {
   credentialStatus,
@@ -59,6 +67,106 @@ const resetCount = computed(() => {
 })
 const cardsExpanded = ref(false)
 const cardsDetailsID = useId()
+const client = useApiClient()
+const cache = useQueryClient()
+const session = useAuthSession()
+const sessionRevision = session.getRevision()
+const admin = computed(() => session.state.principalType === 'admin')
+const autoResetCredit = computed(() =>
+  ['codex', 'zhipuai'].includes(props.item.channelID) ? props.item.autoResetCredit : undefined,
+)
+const autoResetPending = ref(false)
+const autoResetError = ref('')
+const autoResetController = new AbortController()
+const accountIdentity = `${props.item.groupID}:${props.item.credential.id}`
+const currentAccount = () =>
+  !autoResetController.signal.aborted &&
+  !props.readonly &&
+  admin.value &&
+  session.getRevision() === sessionRevision &&
+  `${props.item.groupID}:${props.item.credential.id}` === accountIdentity
+const autoResetBusy = computed(
+  () => autoResetPending.value || props.reading || props.syncing || props.resetPending,
+)
+const autoResetHint = computed(() => {
+  const status = autoResetCredit.value
+  return [
+    t('accountQuotas.autoResetCreditHelp'),
+    ...(status?.expiresAt === undefined
+      ? []
+      : [t('accountQuotas.expiresAt') + ' · ' + credentialTime(status.expiresAt, locale.value)]),
+    ...(status?.lastAttemptAt === undefined
+      ? []
+      : [
+          t('accountQuotas.autoResetCreditLastAttempt') +
+            ' · ' +
+            credentialTime(status.lastAttemptAt, locale.value),
+        ]),
+  ].join('\n')
+})
+watch(
+  () => [
+    session.state.principalType,
+    session.getRevision(),
+    props.readonly,
+    props.item.groupID,
+    props.item.credential.id,
+  ],
+  () => {
+    if (!currentAccount()) autoResetController.abort()
+  },
+  { flush: 'sync' },
+)
+onScopeDispose(() => autoResetController.abort())
+async function setAutoResetCredit(enabled: boolean): Promise<void> {
+  if (
+    !currentAccount() ||
+    !autoResetCredit.value ||
+    autoResetBusy.value ||
+    enabled === autoResetCredit.value.enabled
+  )
+    return
+  autoResetPending.value = true
+  autoResetError.value = ''
+  const { groupID, credential } = props.item
+  try {
+    await cache.cancelQueries({ queryKey: accountQuotasKey })
+    if (!currentAccount()) return
+    // This idempotent preference does not consume a card and has no operation key or retry.
+    const status = await setAccountAutoResetCredit(
+      client,
+      groupID,
+      credential.id,
+      enabled,
+      autoResetController.signal,
+    )
+    if (!currentAccount()) return
+    cache.setQueriesData<AccountQuotaPage>({ queryKey: accountQuotasKey }, (page) =>
+      page === undefined
+        ? undefined
+        : {
+            ...page,
+            items: page.items.map((item) =>
+              item.groupID === groupID && item.credential.id === credential.id
+                ? { ...item, autoResetCredit: status }
+                : item,
+            ),
+          },
+    )
+  } catch {
+    if (currentAccount()) autoResetError.value = 'accountQuotas.autoResetCreditSaveFailed'
+  } finally {
+    if (currentAccount()) {
+      try {
+        await cache.invalidateQueries({ queryKey: accountQuotasKey }, { throwOnError: true })
+      } catch {
+        if (currentAccount() && !autoResetError.value)
+          autoResetError.value = 'accountQuotas.autoResetCreditReadFailed'
+      }
+    }
+    autoResetPending.value = false
+  }
+}
 </script>
 
 <template>
@@ -121,7 +229,7 @@ const cardsDetailsID = useId()
         v-if="item.quotaSupported && !readonly"
         size="xs"
         :aria-label="t('accountQuotas.syncAccount', { name: credential.label })"
-        :disabled="syncing || reading"
+        :disabled="syncing || reading || autoResetPending"
         :loading="active"
         @click="$emit('sync')"
         >{{ t('credentialCards.syncQuota') }}</AppButton
@@ -143,7 +251,10 @@ const cardsDetailsID = useId()
       />
     </div>
     <p v-else class="modern-account-quota-note">{{ t('accountQuotas.noWindows') }}</p>
-    <section v-if="resetSupported || cards.length" class="modern-account-reset-cards">
+    <section
+      v-if="resetSupported || cards.length || autoResetCredit"
+      class="modern-account-reset-cards"
+    >
       <header class="modern-account-reset-header">
         <AppButton
           variant="ghost"
@@ -156,14 +267,40 @@ const cardsDetailsID = useId()
           {{ t('accountQuotas.resetCards') }} ·
           {{ resetCount === undefined ? '—' : n(resetCount) }}
         </AppButton>
+        <div v-if="autoResetCredit" class="modern-account-auto-reset">
+          <AppTooltip :label="autoResetHint" touchable>
+            <span class="modern-account-quota-note" tabindex="0">
+              {{ t('accountQuotas.autoResetCredit') }} ·
+              {{
+                t(
+                  autoResetCredit.enabled
+                    ? 'accountQuotas.autoResetCreditState.' + autoResetCredit.state
+                    : 'accountQuotas.autoResetCreditOff',
+                )
+              }}
+            </span>
+          </AppTooltip>
+          <AppSwitch
+            v-if="admin && !readonly"
+            :model-value="autoResetCredit.enabled"
+            :label="t('accountQuotas.autoResetCredit')"
+            size="sm"
+            :disabled="autoResetBusy"
+            :loading="autoResetPending"
+            @update:model-value="setAutoResetCredit"
+          />
+        </div>
       </header>
+      <p v-if="autoResetError" class="modern-account-quota-error" role="alert">
+        {{ t(autoResetError) }}
+      </p>
       <div v-show="cardsExpanded" :id="cardsDetailsID" class="modern-account-reset-details">
         <div v-if="!readonly && resetSupported" class="modern-account-reset-actions">
           <AppButton
             v-for="kind in accountResetTypes(item)"
             :key="kind ?? 'default'"
             size="xs"
-            :disabled="!resetAllowed(kind)"
+            :disabled="!resetAllowed(kind) || autoResetPending"
             :loading="resetPending"
             @click="$emit('reset', kind)"
             >{{ t(resetCreditActionKey(kind)) }}</AppButton
@@ -315,6 +452,12 @@ a.modern-account-quota-group:hover {
   flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
+  gap: var(--modern-space-2);
+}
+.modern-account-auto-reset {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
   gap: var(--modern-space-2);
 }
 .modern-account-reset-details {

@@ -18,10 +18,8 @@ import (
 	"github.com/sirupsen/logrus"
 	"gorm.io/gorm"
 
-	"gpt-load/internal/accessquota"
 	"gpt-load/internal/modelnotify"
 	"gpt-load/internal/platform/securefile"
-	"gpt-load/internal/state"
 	"gpt-load/internal/storage/models"
 )
 
@@ -48,8 +46,8 @@ type quotaResetMonitor struct {
 	first    bool
 }
 
-// RunQuotaResetMonitor has no startup network burst and performs no model probes
-// or reset-card actions. Cancellation bounds every upstream and notification call.
+// RunQuotaResetMonitor shares bounded account observations with optional
+// per-account expiring-card actions; it never performs model probes.
 func (s *Service) RunQuotaResetMonitor(ctx context.Context) {
 	if s == nil || s.quotaResetDataDir == "" {
 		return
@@ -162,6 +160,9 @@ func (cursor *quotaResetCursor) schedule(now time.Time) {
 		if len(cursor.Candidates) != 0 {
 			interval = time.Minute
 		}
+		if cursor.CardExpiryMS > now.UnixMilli() && cursor.CardExpiryMS <= now.Add(autoResetCreditLead+5*time.Minute).UnixMilli() {
+			interval = time.Minute
+		}
 		for _, window := range cursor.Windows {
 			until := time.UnixMilli(window.EndMS).Sub(now)
 			if until >= -5*time.Minute && until <= 5*time.Minute {
@@ -205,9 +206,19 @@ func (monitor *quotaResetMonitor) cycle(ctx context.Context) error {
 			delete(monitor.state.Cursors, id)
 		}
 	}
-	// Oldest due first prevents high-ID starvation when the cap is reached.
+	// Due expiring cards take priority; other accounts retain oldest-due order.
 	sort.SliceStable(eligible, func(i, j int) bool {
-		return monitor.state.Cursors[eligible[i].ID].NextAttemptMS < monitor.state.Cursors[eligible[j].ID].NextAttemptMS
+		left, right := monitor.state.Cursors[eligible[i].ID], monitor.state.Cursors[eligible[j].ID]
+		urgent := func(cursor *quotaResetCursor) bool {
+			return cursor.NextAttemptMS <= now.UnixMilli() && cursor.CardExpiryMS > now.UnixMilli() && cursor.CardExpiryMS <= now.Add(autoResetCreditLead).UnixMilli()
+		}
+		if urgent(left) != urgent(right) {
+			return urgent(left)
+		}
+		if urgent(left) && left.CardExpiryMS != right.CardExpiryMS {
+			return left.CardExpiryMS < right.CardExpiryMS
+		}
+		return left.NextAttemptMS < right.NextAttemptMS
 	})
 	cap := 20
 	if monitor.first {
@@ -240,6 +251,7 @@ func (monitor *quotaResetMonitor) cycle(ctx context.Context) error {
 				}
 			}
 			cursor.Failures = 0
+			_, cursor.CardExpiryMS, _ = autoResetCreditCandidate(response, s.now())
 		} else {
 			cursor.Failures++
 			cursor.Candidates = make(map[string]quotaResetCandidate)
@@ -248,6 +260,15 @@ func (monitor *quotaResetMonitor) cycle(ctx context.Context) error {
 		monitor.prune(s.now())
 		if err := monitor.save(); err != nil {
 			return err // Pending event is durable BEFORE any key mutation/send.
+		}
+		if err := monitor.autoResetCredit(ctx, credential, group, response); err != nil {
+			return err
+		}
+		if cursor.CardExpiryMS > s.now().UnixMilli() && cursor.CardExpiryMS <= s.now().Add(autoResetCreditLead).UnixMilli() {
+			cursor.NextAttemptMS = s.now().Add(time.Minute).UnixMilli()
+			if err := monitor.save(); err != nil {
+				return err
+			}
 		}
 	}
 	monitor.prune(s.now())
@@ -274,7 +295,7 @@ func (monitor *quotaResetMonitor) prune(now time.Time) {
 	cutoff := now.Add(-30 * 24 * time.Hour).UnixMilli()
 	events := monitor.state.Events[:0]
 	for _, event := range monitor.state.Events {
-		if event.CreatedMS >= cutoff {
+		if event.Kind == "card" && !event.DecisionDone || event.CreatedMS >= cutoff {
 			events = append(events, event)
 		}
 	}
@@ -285,9 +306,12 @@ func (monitor *quotaResetMonitor) prune(now time.Time) {
 }
 
 type quotaResetSyncResult struct {
-	Enabled bool   `json:"enabled"`
-	Keys    int    `json:"keys"`
-	Reason  string `json:"reason"`
+	Enabled        bool             `json:"enabled"`
+	Keys           int              `json:"keys"`
+	Reason         string           `json:"reason"`
+	Seeds          []quotaResetSeed `json:"seeds,omitempty"`
+	ProofFromMS    int64            `json:"proof_from_ms,omitempty"`
+	TotalBaselines map[uint]int64   `json:"total_baselines_nano_usd,omitempty"`
 }
 
 func groupOverrideBool(group models.Group, key string) bool {
@@ -330,198 +354,23 @@ func (s *Service) quotaResetReceiptDB(db *gorm.DB, event quotaResetEvent) (quota
 	return result, true, nil
 }
 
-// syncQuotaReset only rebases matching periodic rules. No limits, totals, key
-// metadata, request logs, credential state or reset credits are changed here.
-func (s *Service) syncQuotaReset(ctx context.Context, event quotaResetEvent) (quotaResetSyncResult, error) {
-	digest, err := hex.DecodeString(event.Digest)
-	if err != nil || len(digest) != 32 || event.ID != quotaResetUUID(event.Digest) ||
-		event.Period < accessquota.MinPeriodSeconds || event.Period > accessquota.MaxPeriodSeconds {
-		return quotaResetSyncResult{}, errors.New("invalid quota reset event")
-	}
-	if result, exists, err := s.quotaResetReceipt(ctx, event); exists || err != nil {
-		return result, err
-	}
-	result := quotaResetSyncResult{Reason: "sync_off"}
-	snapshot := s.manager.Current()
-	if snapshot == nil || !snapshot.Groups[event.GroupID].AccountQuotaResetSyncEnabled || !event.SyncAllowed {
-		return result, nil // OFF never starts a configuration write/receipt.
-	}
-	result.Enabled = true
-	if !event.UniquePeriod {
-		result.Reason = "ambiguous_period_sources"
-		return result, nil
-	}
-	installers := []func() error{}
-	_, err = s.writeConfig(ctx, func(tx *gorm.DB) error {
-		// Duplicate check under writeMu also fences another monitor/replayed event.
-		if previous, exists, receiptErr := s.quotaResetReceiptDB(tx, event); receiptErr != nil {
-			return receiptErr
-		} else if exists {
-			result = previous
-			return errQuotaResetSkip
-		}
-		skip := func(reason string) error { result.Reason = reason; return errQuotaResetSkip }
-		current := s.manager.Current()
-		var group models.Group
-		if err := tx.First(&group, event.GroupID).Error; err != nil {
-			if errors.Is(err, gorm.ErrRecordNotFound) {
-				return skip("target_changed")
-			}
-			return err
-		}
-		if current == nil || !current.Groups[event.GroupID].AccountQuotaResetSyncEnabled || !groupOverrideBool(group, state.SettingAccountQuotaResetSyncEnabled) {
-			result.Enabled = false
-			return skip("sync_off")
-		}
-		if !group.Enabled || quotaResetTarget(group) != event.Target {
-			return skip("target_changed")
-		}
-		var accounts []models.Credential
-		if err := tx.Where("group_id = ? AND status = ?", event.GroupID, models.CredentialStatusActive).Find(&accounts).Error; err != nil {
-			return err
-		}
-		if len(accounts) != 1 {
-			return skip("multiple_active_accounts")
-		}
-		if accounts[0].ID != event.CredentialID || quotaResetIdentity(accounts[0]) != event.Identity {
-			return skip("identity_changed")
-		}
-		now := s.now()
-		if event.EndMS <= now.UnixMilli() || event.EndMS-event.Period*1000 > now.UnixMilli()+quotaResetToleranceMS || event.CreatedMS > now.UnixMilli() || now.UnixMilli()-event.CreatedMS > int64(10*time.Minute/time.Millisecond) {
-			return skip("outdated_event")
-		}
-		// A queued event must still match the latest authoritative upstream
-		// window. Never replay a previous restoration into a later upstream cycle.
-		var observation models.CredentialObservation
-		if err := tx.Where("credential_id = ?", event.CredentialID).Take(&observation).Error; err != nil {
-			if errors.Is(err, gorm.ErrRecordNotFound) {
-				return skip("outdated_event")
-			}
-			return err
-		}
-		if observation.IdentityFingerprint != accounts[0].IdentityFingerprint || observation.ObservedAtMS == nil || *observation.ObservedAtMS < event.CreatedMS ||
-			(observation.LastErrorCode != "" && observation.LastErrorCode != "observation_partial") {
-			return skip("outdated_event")
-		}
-		latest := mapCredentialObservation(observation)
-		latest.LastErrorCode = "" // Only used to compare identity/anchor; no new event is derived from preserved partial windows.
-		matched := false
-		for _, window := range quotaResetWindows(latest) {
-			if window.Key == event.WindowKey && window.EndMS == event.EndMS && window.UniquePeriod {
-				matched = true
-			}
-		}
-		if !matched {
-			return skip("outdated_event")
-		}
-		var keys []models.AccessKey
-		if err := tx.Select("id", "status", "filters", "expires_at_ms").Where("status = ?", state.AccessKeyStatusActive).Order("id ASC").Find(&keys).Error; err != nil {
-			return err
-		}
-		for _, key := range keys {
-			filters, decodeErr := decodeStoredAccessKeyFilters(key.Filters)
-			if decodeErr != nil {
-				return decodeErr
-			}
-			if !singletonConfiguredGroups(filters.Groups, event.GroupID) || key.ExpiresAtMS != nil && *key.ExpiresAtMS <= now.UnixMilli() {
-				continue
-			}
-			view, exists := current.AccessKeysByID[key.ID]
-			if !exists || view.Status != state.AccessKeyStatusActive || !forkKeyQuotaFiltersMatch(filters, view.Filters) {
-				return errors.New("quota reset key configuration mismatch")
-			}
-			var rows []models.AccessKeyCostLimitRule
-			if err := tx.Where("access_key_id = ?", key.ID).Order("CASE WHEN kind = 'total' THEN 0 ELSE 1 END ASC, period_seconds ASC, id ASC").Find(&rows).Error; err != nil {
-				return err
-			}
-			definitions := make([]accessquota.Rule, 0, len(rows))
-			for _, row := range rows {
-				definitions = append(definitions, accessquota.Rule{ID: row.ID, Revision: row.RuleRevision, Kind: accessquota.Kind(row.Kind), LimitNanoUSD: row.LimitNanoUSD, PeriodSeconds: row.PeriodSeconds})
-			}
-			if !slices.Equal(definitions, view.CostLimitRules) {
-				return errors.New("quota reset rule configuration mismatch")
-			}
-			runtime := s.accessQuota.Snapshot(key.ID, now)
-			if len(runtime.Rules) != len(definitions) {
-				return errors.New("quota reset runtime rule mismatch")
-			}
-			proposed, states := []accessquota.Rule{}, []accessquota.RestoredState{}
-			for index, definition := range definitions {
-				live := runtime.Rules[index]
-				if live.Rule != definition {
-					return errors.New("quota reset runtime definition mismatch")
-				}
-				if definition.Kind != accessquota.KindPeriodic || definition.PeriodSeconds != event.Period {
-					continue
-				}
-				// Native windows may start on the first request and legitimately end
-				// later than upstream; align those too. Only a native cycle begun
-				// after this confirmed event is too new to rebase safely.
-				if live.WindowStartedAtMS != nil && *live.WindowStartedAtMS > event.CreatedMS {
-					continue
-				}
-				if live.WindowEndsAtMS != nil && *live.WindowEndsAtMS == event.EndMS && live.UsedNanoUSD == 0 {
-					continue
-				}
-				if definition.Revision == ^uint64(0) {
-					return errors.New("quota reset revision overflow")
-				}
-				definition.Revision++
-				start, end := event.EndMS-event.Period*1000, event.EndMS
-				proposed = append(proposed, definition)
-				states = append(states, accessquota.RestoredState{AccessKeyID: key.ID, RuleID: definition.ID, RuleRevision: definition.Revision,
-					WindowStartedAtMS: &start, WindowEndsAtMS: &end, WindowGeneration: 1, SnapshotVersion: 1})
-			}
-			if len(proposed) == 0 {
-				continue
-			}
-			install, prepareErr := s.accessQuota.PreparePeriodicRebase(key.ID, proposed, states)
-			if prepareErr != nil {
-				return prepareErr
-			}
-			for index, definition := range proposed {
-				updated := tx.Model(&models.AccessKeyCostLimitRule{}).Where("id = ? AND rule_revision = ?", definition.ID, definition.Revision-1).Update("rule_revision", definition.Revision)
-				if updated.Error != nil {
-					return updated.Error
-				}
-				if updated.RowsAffected != 1 {
-					return errors.New("quota reset rule revision changed")
-				}
-				seed := states[index]
-				checkpoint := models.AccessKeyCostLimitState{RuleID: seed.RuleID, RuleRevision: seed.RuleRevision, UsedNanoUSD: 0,
-					WindowStartedAtMS: seed.WindowStartedAtMS, WindowEndsAtMS: seed.WindowEndsAtMS, WindowGeneration: 1, SnapshotVersion: 1}
-				if err := tx.Save(&checkpoint).Error; err != nil {
-					return err
-				}
-			}
-			installers = append(installers, install)
-			result.Keys++
-		}
-		result.Reason = "synced"
-		if result.Keys == 0 {
-			result.Reason = "no_matching_dedicated_periodic_keys"
-		}
-		canonical, _ := json.Marshal(result)
-		nowMS := now.UnixMilli()
-		// Terminal in the SAME transaction. Generic staged operation recovery
-		// must never interpret this monitor-owned event as an unfinished mutation.
-		return tx.Create(&models.ControlOperation{OperationID: event.ID, IdempotencyKey: event.ID, DigestVersion: 1, RequestDigest: digest,
-			OperationKind: quotaResetSyncKind, ResourceIdentity: event.Digest, CanonicalResult: canonical, CompletedAtMS: &nowMS}).Error
-	}, func() error {
-		for _, install := range installers {
-			if err := install(); err != nil {
-				return err
-			}
-		}
-		return nil
-	})
-	if errors.Is(err, errQuotaResetSkip) {
-		return result, nil
-	}
-	return result, err
-}
-
 func (monitor *quotaResetMonitor) flush(ctx context.Context) error {
+	if err := monitor.scanResetCreditOperations(ctx); err != nil {
+		return err
+	}
+	// Card receipts take priority over heuristic events from the same refresh.
+	slices.SortStableFunc(monitor.state.Events, func(a, b quotaResetEvent) int {
+		if (a.Kind == "card") == (b.Kind == "card") {
+			return 0
+		}
+		if a.Kind == "card" {
+			return -1
+		}
+		return 1
+	})
+	if err := monitor.save(); err != nil {
+		return err
+	}
 	now := monitor.service.now()
 	decisions, submissions := 0, 0
 	for index := range monitor.state.Events {
@@ -531,11 +380,32 @@ func (monitor *quotaResetMonitor) flush(ctx context.Context) error {
 		}
 		if !event.DecisionDone && event.DecisionNextMS <= now.UnixMilli() && decisions < 20 {
 			decisions++
+			if event.Kind == "card" {
+				ready, _, reason, err := monitor.service.readyResetCreditEvent(ctx, *event)
+				if err != nil {
+					return err
+				}
+				if reason == "" && event.EndMS == 0 {
+					*event = ready
+					if err := monitor.save(); err != nil {
+						return err
+					}
+				}
+			}
 			result, err := monitor.service.syncQuotaReset(ctx, *event)
+			if err == nil && quotaResetRetryReason(result.Reason) {
+				event.DecisionTries++
+				event.DecisionNextMS = now.Add(time.Minute).UnixMilli()
+				event.SkipReason = result.Reason
+				if err := monitor.save(); err != nil {
+					return err
+				}
+				continue
+			}
 			if err != nil {
 				event.DecisionTries++
 				event.DecisionNextMS = now.Add(quotaResetBackoff(event.DecisionTries)).UnixMilli()
-				if event.DecisionTries >= 8 {
+				if event.DecisionTries >= 8 && event.Kind != "card" {
 					event.DecisionDone, event.SkipReason = true, "sync_error"
 				}
 			} else {
@@ -634,7 +504,9 @@ func (monitor *quotaResetMonitor) message(event quotaResetEvent) modelnotify.Mes
 	}
 	alias := fmt.Sprintf("账号 #%d", event.CredentialID)
 	kind, level := "自然周期重置", "info"
-	if event.Kind == "sudden" {
+	if event.Kind == "card" {
+		kind = "重置卡额度恢复"
+	} else if event.Kind == "sudden" {
 		kind, level = "额度恢复", "warning"
 	}
 	setting := "关闭"

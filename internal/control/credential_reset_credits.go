@@ -13,7 +13,6 @@ import (
 	"github.com/sirupsen/logrus"
 	"gorm.io/gorm"
 
-	"gpt-load/internal/platform/canonicaljson"
 	app_errors "gpt-load/internal/platform/errors"
 	"gpt-load/internal/platform/utils"
 	"gpt-load/internal/storage/models"
@@ -54,13 +53,15 @@ type ResetCreditConsumeResponse struct {
 }
 
 type storedResetCreditResult struct {
-	Status       string `json:"status"`
-	WindowsReset int    `json:"windows_reset"`
-	RedeemedAtMS *int64 `json:"redeemed_at_ms,omitempty"`
+	Status       string                 `json:"status"`
+	WindowsReset int                    `json:"windows_reset"`
+	RedeemedAtMS *int64                 `json:"redeemed_at_ms,omitempty"`
+	SyncIntent   *resetCreditSyncIntent `json:"sync_intent,omitempty"`
 }
 
 type storedResetCreditRequest struct {
-	Request json.RawMessage `json:"request"`
+	Request    json.RawMessage        `json:"request,omitempty"`
+	SyncIntent *resetCreditSyncIntent `json:"sync_intent,omitempty"`
 }
 
 // ConsumeCredentialResetCredit idempotently consumes one provider reset credit
@@ -72,6 +73,14 @@ func (s *Service) ConsumeCredentialResetCredit(
 	idempotencyKey string,
 	resetTypes ...string,
 ) (ResetCreditConsumeResponse, error) {
+	if !s.resetCreditActionMu.TryLock() {
+		return ResetCreditConsumeResponse{}, app_errors.ErrResetCreditOutcomeUnknown
+	}
+	defer s.resetCreditActionMu.Unlock()
+	return s.consumeCredentialResetCredit(ctx, groupID, credentialID, idempotencyKey, resetTypes...)
+}
+
+func (s *Service) consumeCredentialResetCredit(ctx context.Context, groupID, credentialID uint, idempotencyKey string, resetTypes ...string) (ResetCreditConsumeResponse, error) {
 	kind := ""
 	if len(resetTypes) > 1 {
 		return ResetCreditConsumeResponse{}, app_errors.ErrValidation
@@ -91,6 +100,9 @@ func (s *Service) ConsumeCredentialResetCredit(
 	group, credential, _, err := s.loadObservationTarget(ctx, groupID, credentialID)
 	if err != nil {
 		return ResetCreditConsumeResponse{}, err
+	}
+	if !s.autoResetCreditAllowed(ctx, group, credential) {
+		return ResetCreditConsumeResponse{}, app_errors.ErrResetCreditUnavailable
 	}
 	network, err := s.credentialNetworkContext(ctx, s.db, group, credential)
 	if err != nil {
@@ -130,17 +142,27 @@ func (s *Service) ConsumeCredentialResetCredit(
 		return s.replayResetCreditOperation(ctx, groupID, credentialID, operation)
 	}
 
+	var previousRequest storedResetCreditRequest
+	_ = json.Unmarshal(operation.ResultJSON, &previousRequest)
+	hadPreparedSelection := len(previousRequest.Request) > 0
+	if err := s.persistResetCreditSyncIntent(ctx, &operation, group, credential, kind); err != nil {
+		return ResetCreditConsumeResponse{}, app_errors.ErrResetCreditOutcomeUnknown
+	}
 	if dispatch.consume == nil {
 		_ = s.finishResetCreditOperation(operation, models.CredentialResetOperationOutcomeUnknown, nil, app_errors.ErrResetCreditOutcomeUnknown.Code)
 		return ResetCreditConsumeResponse{}, app_errors.ErrResetCreditOutcomeUnknown
 	}
 	callContext, cancel := context.WithTimeout(ctx, defaultSubscriptionControlTimeout)
+	if condition, automatic := subscriptionruntime.ResetCreditExpiryFromContext(ctx); automatic {
+		condition.NowMS = s.now().UnixMilli()
+		callContext = subscriptionruntime.WithResetCreditExpiryCondition(callContext, condition)
+	}
 	request, prepareErr := s.prepareResetCreditRequest(callContext, operation, dispatch.prepare)
 	if prepareErr != nil {
 		cancel()
 		state, apiErr := models.CredentialResetOperationRejected, classifyResetCreditPreparationError(prepareErr)
 		// 已持久化选卡的操作可能发送过兑换，不能因恢复参数失败而解除保护。
-		if len(operation.ResultJSON) > 0 {
+		if hadPreparedSelection {
 			state, apiErr = models.CredentialResetOperationOutcomeUnknown, app_errors.ErrResetCreditOutcomeUnknown
 		}
 		if err := s.finishResetCreditOperation(operation, state, nil, apiErr.Code); err != nil {
@@ -148,11 +170,20 @@ func (s *Service) ConsumeCredentialResetCredit(
 		}
 		return ResetCreditConsumeResponse{}, apiErr
 	}
+	if s.resetCreditAutomatic(ctx) {
+		currentGroup, currentCredential, _, currentErr := s.loadObservationTarget(callContext, groupID, credentialID)
+		intent, _ := ctx.Value(autoResetCreditContextKey{}).(autoResetCreditDispatch)
+		if currentErr != nil || s.now().UnixMilli() >= intent.ExpiryMS || !s.autoResetCreditAllowed(callContext, currentGroup, currentCredential) {
+			cancel()
+			_ = s.finishResetCreditOperation(operation, models.CredentialResetOperationRejected, nil, app_errors.ErrResetCreditUnavailable.Code)
+			return ResetCreditConsumeResponse{}, app_errors.ErrResetCreditUnavailable
+		}
+	}
 	upstream, consumeErr := dispatch.consume(callContext, request)
 	cancel()
 	if consumeErr != nil {
 		state, apiErr := classifyResetCreditConsumeError(consumeErr)
-		if normalizeGroupConnectionType(group.ConnectionType) == models.ConnectionTypeAPIKey && len(operation.ResultJSON) > 0 {
+		if (normalizeGroupConnectionType(group.ConnectionType) == models.ConnectionTypeAPIKey || s.resetCreditAutomatic(ctx)) && hadPreparedSelection {
 			// A retry of a previously dispatched card can now be unavailable
 			// because the first request succeeded. Never unlock a new card.
 			state, apiErr = models.CredentialResetOperationOutcomeUnknown, app_errors.ErrResetCreditOutcomeUnknown
@@ -166,11 +197,14 @@ func (s *Service) ConsumeCredentialResetCredit(
 		_ = s.finishResetCreditOperation(operation, models.CredentialResetOperationOutcomeUnknown, nil, app_errors.ErrResetCreditOutcomeUnknown.Code)
 		return ResetCreditConsumeResponse{}, app_errors.ErrResetCreditOutcomeUnknown
 	}
+	var metadata storedResetCreditRequest
+	_ = json.Unmarshal(operation.ResultJSON, &metadata)
 	result := storedResetCreditResult{
 		Status: upstream.Status, WindowsReset: upstream.WindowsReset, RedeemedAtMS: upstream.RedeemedAtMS,
+		SyncIntent: metadata.SyncIntent,
 	}
 	runtimeRestored, targetCurrent, targetErr := s.restoreCredentialRuntimeForTarget(ctx, group, credentialID)
-	canonicalResult, err := canonicaljson.Marshal(result)
+	canonicalResult, err := json.Marshal(result)
 	if err != nil || s.finishResetCreditOperation(
 		operation,
 		models.CredentialResetOperationSucceeded,
@@ -194,8 +228,12 @@ func (s *Service) ConsumeCredentialResetCredit(
 		response.ObservationPending = true
 		return response, nil
 	}
+	observationParent := context.Background()
+	if s.resetCreditAutomatic(ctx) {
+		observationParent = ctx
+	}
 	observationContext, cancelObservation := context.WithTimeout(
-		context.Background(),
+		observationParent,
 		2*defaultSubscriptionControlTimeout,
 	)
 	observation, observationErr := s.refreshCredentialObservationForTarget(
@@ -514,13 +552,18 @@ func (s *Service) prepareResetCreditRequest(
 	prepare func(context.Context) (json.RawMessage, error),
 ) (subscriptionruntime.ResetCreditRequest, error) {
 	request := subscriptionruntime.ResetCreditRequest{ID: operation.RedeemRequestID}
+	var stored storedResetCreditRequest
 	if len(operation.ResultJSON) > 0 {
-		var stored storedResetCreditRequest
-		if json.Unmarshal(operation.ResultJSON, &stored) != nil || len(stored.Request) == 0 {
+		if json.Unmarshal(operation.ResultJSON, &stored) != nil {
 			return request, errors.New("invalid stored reset credit request")
 		}
-		request.Data = stored.Request
-		return request, nil
+		if len(stored.Request) > 0 {
+			request.Data = stored.Request
+			return request, nil
+		}
+		if stored.SyncIntent == nil {
+			return request, errors.New("invalid stored reset credit request")
+		}
 	}
 	if prepare == nil {
 		return request, nil
@@ -532,7 +575,8 @@ func (s *Service) prepareResetCreditRequest(
 	if len(data) > 4096 || !json.Valid(data) {
 		return request, errors.New("invalid reset credit request data")
 	}
-	raw, err := json.Marshal(storedResetCreditRequest{Request: data})
+	stored.Request = data
+	raw, err := json.Marshal(stored)
 	if err != nil {
 		return request, err
 	}

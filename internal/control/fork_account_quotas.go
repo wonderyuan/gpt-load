@@ -22,15 +22,16 @@ type forkAccountQuotaQuery struct {
 }
 
 type ForkAccountQuotaItem struct {
-	GroupID        uint                       `json:"group_id"`
-	GroupName      string                     `json:"group_name"`
-	ChannelID      string                     `json:"channel_id"`
-	ChannelName    string                     `json:"channel_name"`
-	QuotaSupported bool                       `json:"quota_supported"`
-	ResetSupported bool                       `json:"reset_supported"`
-	ResetTypes     []string                   `json:"reset_types"`
-	Credential     CredentialItemResponse     `json:"credential"`
-	CycleEstimates []ForkAccountCycleEstimate `json:"cycle_estimates"`
+	GroupID         uint                       `json:"group_id"`
+	GroupName       string                     `json:"group_name"`
+	ChannelID       string                     `json:"channel_id"`
+	ChannelName     string                     `json:"channel_name"`
+	QuotaSupported  bool                       `json:"quota_supported"`
+	ResetSupported  bool                       `json:"reset_supported"`
+	ResetTypes      []string                   `json:"reset_types"`
+	Credential      CredentialItemResponse     `json:"credential"`
+	CycleEstimates  []ForkAccountCycleEstimate `json:"cycle_estimates"`
+	AutoResetCredit *AutoResetCreditStatus     `json:"auto_reset_credit,omitempty"`
 }
 
 type ForkAccountQuotasResponse struct {
@@ -204,10 +205,18 @@ func (s *Service) readForkAccountQuotas(ctx context.Context, query forkAccountQu
 			return ForkAccountQuotasResponse{}, app_errors.ErrInternalServer
 		}
 		resetSupported, resetTypes := s.credentialResetTypes(group)
+		var autoReset *AutoResetCreditStatus
+		if s.supportsAutoResetCredit(group) {
+			policy, policyErr := s.loadAutoResetCreditPolicy(ctx, row, group)
+			if policyErr != nil {
+				return ForkAccountQuotasResponse{}, app_errors.ErrInternalServer
+			}
+			autoReset = autoResetCreditView(policy)
+		}
 		result.Items = append(result.Items, ForkAccountQuotaItem{
 			GroupID: group.ID, GroupName: group.Name, ChannelID: group.ChannelID,
 			ChannelName: descriptor.Name, QuotaSupported: supported, ResetSupported: resetSupported, ResetTypes: resetTypes, Credential: item,
-			CycleEstimates: s.forkAccountCycleEstimates(ctx, group, row.ID, item.Observation, observedAtMS),
+			CycleEstimates: s.forkAccountCycleEstimates(ctx, group, row.ID, item.Observation, observedAtMS), AutoResetCredit: autoReset,
 		})
 	}
 	return result, nil

@@ -95,6 +95,18 @@ func JudgeExecution(attempt ExecutionAttempt, decisionContext DecisionContext) D
 			"safety.execution_canceled",
 		)
 	}
+	statusCode := attempt.StatusCode
+	if statusCode == 0 {
+		statusCode = attempt.Evidence.StatusCode
+	}
+	if attempt.Evidence.Kind == execution.ErrorKindHTTP &&
+		originForEvidence(attempt.Evidence) == execution.ErrorOriginUpstream &&
+		statusCode == http.StatusForbidden && attempt.Evidence.Type == "permission_error" {
+		// A structured permission denial ends this request, not the credential's
+		// health. Do not refresh, penalize, or retry another candidate.
+		return decision(FailureCategoryClientError, execution.ErrorOriginUpstream,
+			execution.ErrorScopeRequest, RetryNone, EffectNone, "request.permission_denied")
+	}
 	if attempt.Evidence.Code == EmptyResponseCode {
 		// 上游正常完成了一次请求，只是没有产出内容。换下一个候选值得一试，
 		// 但这不是凭据故障：不冷却、不拉黑，也不计入失败统计。

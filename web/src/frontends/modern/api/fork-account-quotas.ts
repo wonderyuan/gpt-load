@@ -85,6 +85,46 @@ function readCycleEstimate(value: unknown): AccountCycleEstimate {
     estimated: boolean(raw.estimated),
   }
 }
+export const autoResetCreditStates = [
+  'waiting',
+  'ready',
+  'pending',
+  'succeeded',
+  'failed',
+  'unknown',
+] as const
+export interface AutoResetCreditStatus {
+  enabled: boolean
+  state: (typeof autoResetCreditStates)[number]
+  expiresAt?: number
+  lastAttemptAt?: number
+}
+export function readAutoResetCreditStatus(value: unknown): AutoResetCreditStatus {
+  const raw = record(value)
+  return {
+    enabled: boolean(raw.enabled),
+    state: oneOf(raw.state, autoResetCreditStates),
+    ...(raw.expires_at_ms === undefined ? {} : { expiresAt: integer(raw.expires_at_ms) }),
+    ...(raw.last_attempt_at_ms === undefined
+      ? {}
+      : { lastAttemptAt: integer(raw.last_attempt_at_ms) }),
+  }
+}
+export async function setAccountAutoResetCredit(
+  client: ApiClient,
+  groupID: number,
+  credentialID: number,
+  enabled: boolean,
+  signal: AbortSignal,
+): Promise<AutoResetCreditStatus> {
+  return readAutoResetCreditStatus(
+    await client.request(`/api/groups/${groupID}/credentials/${credentialID}/auto-reset-credit`, {
+      method: 'PUT',
+      json: { enabled },
+      signal,
+    }),
+  )
+}
 export interface AccountQuotaItem {
   groupID: number
   groupName: string
@@ -95,6 +135,7 @@ export interface AccountQuotaItem {
   resetTypes?: ResetCreditKind[]
   credential: AccountQuotaCredential
   cycleEstimates?: AccountCycleEstimate[]
+  autoResetCredit?: AutoResetCreditStatus
 }
 export interface AccountQuotaPage {
   observedAt: number
@@ -149,6 +190,9 @@ export async function getAccountQuotas(
             }),
         credential,
         cycleEstimates,
+        ...(item.auto_reset_credit === undefined
+          ? {}
+          : { autoResetCredit: readAutoResetCreditStatus(item.auto_reset_credit) }),
       }
     }),
   }

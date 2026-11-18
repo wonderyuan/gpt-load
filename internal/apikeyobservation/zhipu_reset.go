@@ -54,6 +54,20 @@ func (observer ZhipuObserver) PrepareResetCredit(ctx context.Context, request Re
 	if err != nil {
 		return nil, err
 	}
+	if condition, automatic := subscriptionruntime.ResetCreditExpiryFromContext(ctx); automatic {
+		nowMS := condition.NowMS
+		if nowMS == 0 {
+			nowMS = time.Now().UnixMilli()
+		}
+		// The list is globally ordered across reset types. Never skip its first
+		// card to redeem a later one of the caller's requested kind.
+		if nowMS < 0 || len(cards) == 0 || cards[0].kind != kind ||
+			cards[0].expiresMS != condition.ExpiresAtMS || cards[0].expiresMS <= nowMS ||
+			cards[0].expiresMS-nowMS > (30*time.Minute).Milliseconds() {
+			return nil, &subscriptionruntime.UpstreamHTTPError{StatusCode: http.StatusConflict}
+		}
+		return json.Marshal(cards[0].selection)
+	}
 	for _, card := range cards {
 		if card.kind == kind {
 			return json.Marshal(card.selection)
@@ -105,7 +119,11 @@ func (observer ZhipuObserver) listResetCredits(ctx context.Context, request Requ
 	if err != nil {
 		return nil, err
 	}
-	return normalizeZhipuResetList(raw, time.Now())
+	now := time.Now()
+	if condition, automatic := subscriptionruntime.ResetCreditExpiryFromContext(ctx); automatic && condition.NowMS != 0 {
+		now = time.UnixMilli(condition.NowMS)
+	}
+	return normalizeZhipuResetList(raw, now)
 }
 
 func normalizeZhipuResetList(raw []byte, now time.Time) ([]zhipuAvailableReset, error) {

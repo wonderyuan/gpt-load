@@ -272,9 +272,36 @@ type ResetCreditRequest struct {
 	Data json.RawMessage
 }
 
-// ResetCreditPreparer 仅用于必须先选定卡片的渠道，返回值不得包含认证凭据。
+// ResetCreditPreparer selects a durable card or validates an automatic expiry
+// condition before dispatch. Returned data must not contain credentials.
 type ResetCreditPreparer interface {
 	PrepareResetCredit(context.Context, Credential, Target) (json.RawMessage, error)
+}
+
+// ResetCreditExpiryCondition binds automatic preparation to the earliest known
+// card expiry. NowMS supplies the clock for validation; zero uses the wall clock.
+// Manual requests carry no condition, and stored prepared requests are reused
+// without preparing again.
+type ResetCreditExpiryCondition struct {
+	ExpiresAtMS int64
+	NowMS       int64
+}
+
+type resetCreditExpiryContextKey struct{}
+
+func WithResetCreditExpiryCondition(ctx context.Context, condition ResetCreditExpiryCondition) context.Context {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	return context.WithValue(ctx, resetCreditExpiryContextKey{}, condition)
+}
+
+func ResetCreditExpiryFromContext(ctx context.Context) (ResetCreditExpiryCondition, bool) {
+	if ctx == nil {
+		return ResetCreditExpiryCondition{}, false
+	}
+	condition, ok := ctx.Value(resetCreditExpiryContextKey{}).(ResetCreditExpiryCondition)
+	return condition, ok
 }
 
 // ResetCreditResult is the provider-neutral result of one durable credit action.

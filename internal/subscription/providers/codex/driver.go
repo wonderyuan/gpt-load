@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
 	"strings"
 	"sync"
 	"time"
@@ -223,6 +224,53 @@ func (*codexDriver) Observe(ctx context.Context, credential subscriptionruntime.
 		Payload: normalized, Header: observed.Header.Clone(),
 		QuotaObserved: true, QuotaObservedAt: quotaObservedAt,
 	}, nil
+}
+
+// PrepareResetCredit validates automatic use against the authoritative detailed
+// inventory. The marker is safe to persist; Consume still sends only the durable
+// request ID. Manual requests deliberately keep their existing no-prepare path.
+func (*codexDriver) PrepareResetCredit(ctx context.Context, credential subscriptionruntime.Credential, target subscriptionruntime.Target) (json.RawMessage, error) {
+	condition, automatic := subscriptionruntime.ResetCreditExpiryFromContext(ctx)
+	if !automatic {
+		return nil, nil
+	}
+	value, err := ParseCredentialJSON(credential.Canonical())
+	if err != nil {
+		return nil, err
+	}
+	baseURL, err := target.BaseURL()
+	if err != nil {
+		return nil, err
+	}
+	details, err := ObserveResetCredits(ctx, value, baseURL)
+	if err != nil {
+		var upstream *UpstreamHTTPError
+		if errors.As(err, &upstream) {
+			return nil, &subscriptionruntime.UpstreamHTTPError{StatusCode: upstream.StatusCode}
+		}
+		return nil, err
+	}
+	expiries, err := resetCreditExpiriesForPreparation(details.Payload)
+	if err != nil {
+		return nil, subscriptionruntime.ErrObservationPayloadInvalid
+	}
+	nowMS := condition.NowMS
+	if nowMS == 0 {
+		nowMS = time.Now().UnixMilli()
+	}
+	var earliest int64
+	for _, expiry := range expiries {
+		if expiry > nowMS && (earliest == 0 || expiry < earliest) {
+			earliest = expiry
+		}
+	}
+	if nowMS < 0 || earliest == 0 || earliest != condition.ExpiresAtMS ||
+		earliest <= nowMS || earliest-nowMS > (30*time.Minute).Milliseconds() {
+		return nil, &subscriptionruntime.UpstreamHTTPError{StatusCode: http.StatusConflict}
+	}
+	return json.Marshal(struct {
+		ExpiresAtMS int64 `json:"expires_at_ms"`
+	}{ExpiresAtMS: earliest})
 }
 
 // Consume redeems one Codex reset credit against the resolved target using the

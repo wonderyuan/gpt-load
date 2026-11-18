@@ -527,6 +527,7 @@ func (s *Service) refreshCredentialObservationOnce(
 			// (e.g. reset-card inventory) failed. Never expose preserved windows
 			// as fresh evidence; this detached result is automatic-only.
 			fresh := snapshot.CredentialObservationSnapshot
+			fresh.ResetCredits, fresh.ResetCreditsAvailable = nil, nil
 			fresh.QuotaWindows = nil
 			for _, window := range freshWindows {
 				fresh.QuotaWindows = append(fresh.QuotaWindows, ObservationQuotaWindow{

@@ -66,13 +66,14 @@ type Service struct {
 	rpmWriteMu      sync.Mutex
 	rpmWarningAt    time.Time
 
-	stateMu       sync.Mutex
-	state         lifecycleState
-	workerCancel  context.CancelFunc
-	workerDone    chan struct{}
-	stopRequested chan struct{}
-	shutdownDone  chan struct{}
-	shutdownErr   error
+	stateMu           sync.Mutex
+	state             lifecycleState
+	workerCancel      context.CancelFunc
+	workerDone        chan struct{}
+	workerStartedAtMS int64
+	stopRequested     chan struct{}
+	shutdownDone      chan struct{}
+	shutdownErr       error
 
 	requestBodyBudget       int64
 	pendingRequestBodyBytes atomic.Int64
@@ -225,6 +226,7 @@ func (service *Service) Start() error {
 	workerContext, cancel := context.WithCancel(context.Background())
 	service.workerCancel = cancel
 	service.workerDone = make(chan struct{})
+	service.workerStartedAtMS = max(0, service.now().UnixMilli())
 	service.state = lifecycleRunning
 	go service.runWorker(workerContext, service.workerDone)
 	if service.accessQuota != nil && len(service.accessQuota.DirtySnapshots(1)) > 0 {

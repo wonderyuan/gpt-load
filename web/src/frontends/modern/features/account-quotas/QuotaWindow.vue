@@ -33,7 +33,10 @@ const percent = computed(() => {
   return remaining === undefined ? undefined : 100 - remaining
 })
 const title = computed(() => {
-  if ([18000, 604800].includes(props.window.windowSeconds ?? 0))
+  if (
+    props.window.scope === 'account' &&
+    [18000, 604800].includes(props.window.windowSeconds ?? 0)
+  )
     return quotaPeriod(props.window.windowSeconds)
   const key = 'credentialCards.quotaLabels.' + props.window.labelKey
   return quotaWindowTitle(

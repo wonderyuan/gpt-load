@@ -94,6 +94,7 @@ type Service struct {
 	) error
 	operationRecoveryWake chan struct{}
 	writeMu               sync.RWMutex
+	resetCreditActionMu   sync.Mutex
 	observationMu         sync.Mutex
 	observationFlights    map[observationFlightKey]*observationFlight
 	observationSemaphore  chan struct{}

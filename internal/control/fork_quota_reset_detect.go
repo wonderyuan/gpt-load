@@ -16,6 +16,13 @@ import (
 
 const quotaResetToleranceMS = int64(time.Minute / time.Millisecond)
 
+func quotaResetSameAnchor(a, b int64) bool {
+	if a < b {
+		a, b = b, a
+	}
+	return uint64(a)-uint64(b) <= uint64(quotaResetToleranceMS)
+}
+
 // The monitor deliberately owns a baseline independent of CredentialObservation:
 // consuming a reset card invalidates that row, but must not erase reset evidence.
 // Only hashes, numeric windows and non-secret IDs are persisted here.
@@ -27,6 +34,7 @@ type quotaResetCursor struct {
 	LastVersion    uint64                         `json:"last_version"`
 	NextAttemptMS  int64                          `json:"next_attempt_ms"`
 	Failures       int                            `json:"failures"`
+	CardExpiryMS   int64                          `json:"card_expiry_ms,omitempty"`
 	Windows        map[string]quotaResetWindow    `json:"windows"`
 	Candidates     map[string]quotaResetCandidate `json:"candidates"`
 }
@@ -229,12 +237,24 @@ func (cursor *quotaResetCursor) observe(credential models.Credential, group mode
 		}
 		candidate, confirming := cursor.Candidates[next.Key]
 		if confirming {
-			kind := quotaResetClassify(candidate.Old, next, candidate.FirstMS)
-			if kind != candidate.Kind || next.EndMS != candidate.New.EndMS || next.ObservedMS-candidate.FirstMS > int64(10*time.Minute/time.Millisecond) {
-				delete(cursor.Candidates, next.Key)
-				cursor.Windows[next.Key] = next
-				continue
+			sameAnchor := quotaResetSameAnchor(next.EndMS, candidate.New.EndMS)
+			classifiedNext := next
+			if sameAnchor {
+				// Recheck usage and classification against the first candidate anchor,
+				// never a moving anchor that could accumulate repeated small drift.
+				classifiedNext.EndMS = candidate.New.EndMS
 			}
+			kind := quotaResetClassify(candidate.Old, classifiedNext, candidate.FirstMS)
+			if kind != candidate.Kind || !sameAnchor || next.EndMS <= next.ObservedMS ||
+				next.EndMS-next.Period*1000 > candidate.FirstMS+quotaResetToleranceMS ||
+				next.ObservedMS-candidate.FirstMS > int64(10*time.Minute/time.Millisecond) {
+				delete(cursor.Candidates, next.Key)
+				// An invalid candidate is not a new baseline. Reclassify old -> next
+				// below so a changed anchor does not erase the original usage drop.
+				confirming = false
+			}
+		}
+		if confirming {
 			if next.ObservedMS-candidate.FirstMS < int64(30*time.Second/time.Millisecond) {
 				continue
 			}
@@ -245,7 +265,7 @@ func (cursor *quotaResetCursor) observe(credential models.Credential, group mode
 			// Same-anchor restorations can happen again after genuinely accruing new
 			// usage. Persisted first-observation time distinguishes those events.
 			epoch := int64(0)
-			if event.EndMS == event.OldEndMS {
+			if quotaResetSameAnchor(event.EndMS, event.OldEndMS) {
 				epoch = candidate.FirstMS
 			}
 			body, _ := json.Marshal([]any{"fork-quota-reset-v1", identity, target, next.Key, event.Period, event.OldEndMS, event.EndMS, event.Kind, epoch})

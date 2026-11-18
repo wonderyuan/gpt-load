@@ -178,6 +178,8 @@ func (s *Server) HTTPModule() httproute.Module {
 			controlRoute("control.fork.home-overview", http.MethodGet, "/fork/home-overview", s.handleForkHomeOverview),
 			controlRoute("control.fork.account-quotas", http.MethodGet, "/fork/account-quotas", s.handleForkAccountQuotas),
 			controlRoute("control.fork.key-quotas", http.MethodGet, "/fork/key-quotas", s.handleForkKeyQuotas),
+			controlRoute("control.fork.reset-credits.reconcile", http.MethodPost, "/fork/reset-credits/:operationID/reconcile", s.auditMutation(newMutationDescriptor("reset_credit_reconcile", "reset_credit", resetCreditReconcileMutationLocator)), s.handleResetCreditReconcile),
+			controlRoute("control.fork.access-keys.cycle-repair", http.MethodPost, "/fork/access-keys/:id/cycle-repair", s.auditMutation(newMutationDescriptor("fork_key_cycle_repair", "access_key", accessKeyMutationLocator)), s.handleForkKeyCycleRepair),
 			controlRoute("control.fork.access-keys.quota-import", http.MethodPost, "/fork/access-keys/:id/quota-import",
 				s.auditMutation(newMutationDescriptor("fork_key_quota_import", "access_key", accessKeyMutationLocator)), s.handleForkKeyQuotaImport),
 			controlRoute("control.home", http.MethodGet, "/home", s.handleHome),
@@ -353,6 +355,13 @@ func (s *Server) HTTPModule() httproute.Module {
 					groupCredentialMutationLocator,
 				)),
 				s.handleRefreshGroupCredential,
+			),
+			controlRoute(
+				"control.group-credentials.auto-reset-credit",
+				http.MethodPut,
+				"/groups/:group_id/credentials/:credential_id/auto-reset-credit",
+				s.auditMutation(newMutationDescriptor("group_credential_auto_reset_credit", "group_credential", groupCredentialMutationLocator)),
+				s.handleSetAutoResetCredit,
 			),
 			controlRoute(
 				"control.group-credentials.reset-credit-consume",

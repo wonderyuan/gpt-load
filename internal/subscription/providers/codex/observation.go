@@ -641,6 +641,101 @@ func normalizeResetCreditDetails(raw []byte) (*int64, []resetCredit, bool, error
 	return count, credits, present, nil
 }
 
+// resetCreditExpiriesForPreparation is intentionally stricter than the display
+// normalizer: an incomplete list must never authorize an automatic redemption.
+func resetCreditExpiriesForPreparation(raw []byte) ([]int64, error) {
+	invalid := errors.New("incomplete reset-credit inventory")
+	trimmed := bytes.TrimSpace(raw)
+	if len(trimmed) == 0 || bytes.Equal(trimmed, []byte("null")) {
+		return nil, invalid
+	}
+	var details []*resetCreditDetail
+	var count *int64
+	if trimmed[0] == '[' {
+		if json.Unmarshal(trimmed, &details) != nil {
+			return nil, invalid
+		}
+	} else {
+		var envelope struct {
+			resetCreditEnvelope
+			HasMore            bool   `json:"has_more"`
+			HasMoreCamel       bool   `json:"hasMore"`
+			NextCursor         string `json:"next_cursor"`
+			NextCursorCamel    string `json:"nextCursor"`
+			NextPageToken      string `json:"next_page_token"`
+			NextPageTokenCamel string `json:"nextPageToken"`
+		}
+		if json.Unmarshal(trimmed, &envelope) != nil || envelope.HasMore || envelope.HasMoreCamel ||
+			strings.TrimSpace(envelope.NextCursor+envelope.NextCursorCamel+envelope.NextPageToken+envelope.NextPageTokenCamel) != "" {
+			return nil, invalid
+		}
+		for _, rawCount := range []json.RawMessage{envelope.AvailableCount, envelope.AvailableCountCamel} {
+			if len(rawCount) == 0 {
+				continue
+			}
+			parsed := resetCount(rawCount)
+			if parsed == nil || (count != nil && *count != *parsed) {
+				return nil, invalid
+			}
+			count = parsed
+		}
+		for _, candidate := range []json.RawMessage{envelope.Credits, envelope.RateLimitResetCredits, envelope.Items, envelope.Data} {
+			candidate = bytes.TrimSpace(candidate)
+			if len(candidate) == 0 || bytes.Equal(candidate, []byte("null")) {
+				continue
+			}
+			if details != nil || json.Unmarshal(candidate, &details) != nil {
+				return nil, invalid
+			}
+		}
+	}
+	if details == nil {
+		return nil, invalid
+	}
+	expiries := make([]int64, 0, len(details))
+	for _, detail := range details {
+		if detail == nil {
+			return nil, invalid
+		}
+		if left, right := strings.TrimSpace(detail.ResetType), strings.TrimSpace(detail.ResetTypeCamel); left != "" && right != "" && !strings.EqualFold(left, right) {
+			return nil, invalid
+		}
+		resetType := strings.TrimSpace(detail.ResetType)
+		if resetType == "" {
+			resetType = strings.TrimSpace(detail.ResetTypeCamel)
+		}
+		if resetType != "" && !strings.EqualFold(resetType, "codex_rate_limits") {
+			continue
+		}
+		switch strings.ToLower(strings.TrimSpace(detail.Status)) {
+		case "", "available":
+		case "consumed", "redeemed", "expired", "unavailable":
+			continue
+		default:
+			return nil, invalid
+		}
+		expires := strings.TrimSpace(detail.ExpiresAt)
+		if expires == "" {
+			expires = strings.TrimSpace(detail.ExpiresAtCamel)
+		}
+		parsed, err := time.Parse(time.RFC3339Nano, expires)
+		if err != nil || parsed.UnixMilli() <= 0 {
+			return nil, invalid
+		}
+		if detail.ExpiresAt != "" && detail.ExpiresAtCamel != "" {
+			alias, err := time.Parse(time.RFC3339Nano, strings.TrimSpace(detail.ExpiresAtCamel))
+			if err != nil || !parsed.Equal(alias) {
+				return nil, invalid
+			}
+		}
+		expiries = append(expiries, parsed.UnixMilli())
+	}
+	if count != nil && *count != int64(len(expiries)) {
+		return nil, invalid
+	}
+	return expiries, nil
+}
+
 func resetCount(values ...json.RawMessage) *int64 {
 	for _, value := range values {
 		trimmed := bytes.TrimSpace(value)
