@@ -90,6 +90,16 @@ func externalModelName(model ModelConfig) string {
 	return strings.TrimSpace(model.ID)
 }
 
+// supportsDecisions 判断模型能否承接内部决策调用（Jev 或 Google 原生决策协议）。
+func supportsDecisions(target channel.ResolvedTarget, modelID string) bool {
+	for _, clientProtocol := range jev.Protocols() {
+		if _, supported := target.ModeForModel(clientProtocol, execution.OperationDecisionsCreate, modelID); supported {
+			return true
+		}
+	}
+	return false
+}
+
 type AccessKeyConfig struct {
 	ConcurrencyLimit  *int64
 	KeyPrefix         string
@@ -142,11 +152,12 @@ type TimeoutConfig struct {
 }
 
 type HeaderRules struct {
-	Set    map[string]string
-	Remove []string
+	Set     map[string]string
+	Remove  []string
+	Default map[string]string
 }
 
-// ConfiguredNames 标记显式设置或移除的字段，区分规则与客户端原始请求头。
+// ConfiguredNames 标记显式设置或移除的字段，兜底不覆盖订阅渠道自带的请求头。
 func (rules HeaderRules) ConfiguredNames() []string {
 	if len(rules.Set)+len(rules.Remove) == 0 {
 		return nil
@@ -281,11 +292,7 @@ func Compile(input CompileInput) (*ConfigSnapshot, error) {
 			continue
 		}
 		for _, model := range group.Models {
-			if _, supported := target.ModeForModel(
-				protocol.Decisions,
-				execution.OperationDecisionsCreate,
-				model.ID,
-			); supported {
+			if supportsDecisions(target, model.ID) {
 				decisionModels[externalModelName(model)] = struct{}{}
 			}
 		}
@@ -304,7 +311,7 @@ func Compile(input CompileInput) (*ConfigSnapshot, error) {
 				continue
 			}
 			for _, model := range group.Models {
-				if _, supported := target.ModeForModel(protocol.Decisions, execution.OperationDecisionsCreate, model.ID); supported && externalModelName(model) == shared.Model {
+				if supportsDecisions(target, model.ID) && externalModelName(model) == shared.Model {
 					available = true
 				}
 			}

@@ -22,7 +22,6 @@ import (
 	"gpt-load/internal/platform/encryption"
 	"gpt-load/internal/platform/epochms"
 	app_errors "gpt-load/internal/platform/errors"
-	"gpt-load/internal/protocol"
 	"gpt-load/internal/requestaudit"
 	"gpt-load/internal/requestredact"
 	"gpt-load/internal/state"
@@ -31,8 +30,9 @@ import (
 )
 
 type HeaderRulesResponse struct {
-	Set    map[string]string `json:"set"`
-	Remove []string          `json:"remove"`
+	Set     map[string]string `json:"set"`
+	Remove  []string          `json:"remove"`
+	Default map[string]string `json:"default,omitempty"`
 }
 
 type CORSConfigResponse struct {
@@ -395,6 +395,13 @@ func mapSettingsResponse(
 		set[name] = value
 	}
 	remove := append([]string{}, settings.HeaderRules.Remove...)
+	var defaults map[string]string
+	if len(settings.HeaderRules.Default) > 0 {
+		defaults = make(map[string]string, len(settings.HeaderRules.Default))
+		for name, value := range settings.HeaderRules.Default {
+			defaults[name] = value
+		}
+	}
 	responseSet := make(map[string]string, len(settings.ResponseHeaderRules.Set))
 	for name, value := range settings.ResponseHeaderRules.Set {
 		responseSet[name] = value
@@ -456,8 +463,9 @@ func mapSettingsResponse(
 			RequestTimeout:    durationSeconds(settings.RequestTimeout),
 			StreamIdleTimeout: durationSeconds(settings.StreamIdleTimeout),
 			HeaderRules: HeaderRulesResponse{
-				Set:    set,
-				Remove: remove,
+				Set:     set,
+				Default: defaults,
+				Remove:  remove,
 			},
 			CORS: CORSConfigResponse{
 				Enabled:          settings.CORS.Enabled,
@@ -498,12 +506,14 @@ func decisionModelNames(snapshot *state.ConfigSnapshot) []string {
 	if snapshot == nil {
 		return []string{}
 	}
-	byOperation := snapshot.ExecutionCandidates[protocol.Decisions]
-	byModel := byOperation[execution.OperationDecisionsCreate]
-	names := make([]string, 0, len(byModel))
-	for name, targets := range byModel {
-		if strings.TrimSpace(name) != "" && len(targets) > 0 {
-			names = append(names, name)
+	seen := map[string]bool{}
+	names := []string{}
+	for _, clientProtocol := range jev.Protocols() {
+		for name, targets := range snapshot.ExecutionCandidates[clientProtocol][execution.OperationDecisionsCreate] {
+			if strings.TrimSpace(name) != "" && len(targets) > 0 && !seen[name] {
+				seen[name] = true
+				names = append(names, name)
+			}
 		}
 	}
 	sort.Strings(names)

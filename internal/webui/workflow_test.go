@@ -15,7 +15,7 @@ import (
 
 const (
 	checkoutActionRef         = "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1"
-	setupGoActionRef          = "actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e"
+	setupGoActionRef          = "actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5"
 	setupNodeActionRef        = "actions/setup-node@820762786026740c76f36085b0efc47a31fe5020"
 	pnpmSetupActionRef        = "pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271"
 	uploadArtifactActionRef   = "actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9"
@@ -2699,7 +2699,7 @@ func TestDockerfilePinsBuildAndRuntimeImagesByVersionAndDigest(t *testing.T) {
 	for _, required := range []string{
 		"node:24.18.0-alpine3.24@sha256:a0b9bf06e4e6193cf7a0f58816cc935ff8c2a908f81e6f1a95432d679c54fbfd",
 		"pnpm@11.17.0",
-		"golang:1.27.3-alpine3.24@sha256:f2c872bcee949b7be9c490efd02b48a8a2fbf947cdf533f1c58525ec9d8170fd",
+		"golang:1.27.4-alpine3.24@sha256:70bd7ddea8b6cbe5d6943cde279d6b67feb10cc924fb9100d1d8757c1575b280",
 		"alpine:3.24.4@sha256:f59abe656b692d901e184be3445e084786602108599d2a51d229c0f5a48c71bf",
 	} {
 		if !strings.Contains(content, required) {

@@ -191,7 +191,7 @@ func (recorder *requestRecorder) freezeSensitiveInputErrorSummaries() {
 		(recorder.protocol != protocol.OpenAIImages &&
 			recorder.protocol != protocol.OpenAIEmbeddings && recorder.protocol != protocol.GeminiEmbeddings &&
 			recorder.protocol != protocol.Rerank &&
-			recorder.protocol != protocol.Decisions &&
+			recorder.protocol != protocol.Decisions && recorder.protocol != protocol.GeminiDecisions &&
 			recorder.protocol != protocol.AudioSpeech &&
 			recorder.protocol != protocol.Mistral) {
 		return
@@ -977,6 +977,10 @@ func resolvedErrorSummarySecretValues(
 	}
 	appendSecret(apiKey)
 	for _, value := range rules.Set {
+		appendSecret(value)
+		appendSecret(strings.ReplaceAll(value, "${API_KEY}", apiKey))
+	}
+	for _, value := range rules.Default {
 		appendSecret(value)
 		appendSecret(strings.ReplaceAll(value, "${API_KEY}", apiKey))
 	}

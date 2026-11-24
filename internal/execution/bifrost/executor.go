@@ -71,7 +71,7 @@ type streamSDKResult struct {
 
 // Execute executes one non-streaming attempt.
 func (r *Runtime) Execute(parent context.Context, spec execution.AttemptSpec) (result execution.AttemptResult) {
-	spec = withUserAgent(spec, r.userAgentFallback)
+	spec = withUserAgent(spec)
 	defer func() {
 		normalizeImagesAttemptResult(spec, &result)
 		normalizeEmbeddingsAttemptResult(spec, &result)
@@ -197,7 +197,7 @@ func (r *Runtime) ExecuteStream(
 	spec execution.AttemptSpec,
 	sink execution.StreamSink,
 ) (result execution.StreamResult) {
-	spec = withUserAgent(spec, r.userAgentFallback)
+	spec = withUserAgent(spec)
 	defer func() {
 		normalizeImagesStreamResult(spec, &result)
 	}()
@@ -537,7 +537,7 @@ func (r *Runtime) prepare(spec execution.AttemptSpec, stream bool) (preparedAtte
 	if spec.ClientProtocol == protocol.Rerank {
 		return prepareRerank(spec, resolved, provider, directKey, secrets)
 	}
-	if spec.ClientProtocol == protocol.Decisions {
+	if spec.ClientProtocol == protocol.Decisions || spec.ClientProtocol == protocol.GeminiDecisions {
 		return prepareDecisions(spec, resolved, provider, directKey, secrets)
 	}
 	if spec.ClientProtocol == protocol.AudioSpeech {
@@ -1070,7 +1070,7 @@ func supportedRequestShape(spec execution.AttemptSpec, stream bool) bool {
 		}
 		switch spec.ClientProtocol {
 		case protocol.OpenAICompletions, protocol.OpenAIResponses, protocol.OpenAIEmbeddings, protocol.Rerank, protocol.Decisions,
-			protocol.Anthropic, protocol.Gemini, protocol.GeminiEmbeddings:
+			protocol.Anthropic, protocol.Gemini, protocol.GeminiEmbeddings, protocol.GeminiDecisions:
 			return true
 		default:
 			return false
@@ -1118,6 +1118,8 @@ func supportedRequestShape(spec execution.AttemptSpec, stream bool) bool {
 		return !stream && spec.RouteMode == execution.RouteNative && spec.Operation == execution.OperationRerank && spec.Method == http.MethodPost && spec.Path == "/v1/rerank"
 	case protocol.Decisions:
 		return !stream && spec.RouteMode == execution.RouteNative && spec.Operation == execution.OperationDecisionsCreate && spec.Method == http.MethodPost && spec.Path == "/v1/systemone"
+	case protocol.GeminiDecisions:
+		return !stream && spec.RouteMode == execution.RouteNative && spec.Operation == execution.OperationDecisionsCreate && spec.Method == http.MethodPost && spec.Path == "/v1beta/decisions"
 	case protocol.AudioSpeech:
 		return audioSpeechRequestShape(spec)
 	case protocol.Mistral:
@@ -1217,19 +1219,21 @@ func nativePassthroughPath(spec execution.AttemptSpec, providerKind channel.Prov
 	case channel.ProviderOpenAI, channel.ProviderOpenAICompatible, channel.ProviderAlibaba:
 		return spec.Path, nil
 	case channel.ProviderMultiProtocolGateway:
-		if spec.ClientProtocol != protocol.Gemini && spec.ClientProtocol != protocol.GeminiEmbeddings {
-			return spec.Path, nil
+		path := spec.Path
+		if (spec.ClientProtocol == protocol.Gemini || spec.ClientProtocol == protocol.GeminiEmbeddings) &&
+			spec.Operation != execution.OperationListModels {
+			marker := "/models/"
+			modelStart := strings.Index(path, marker)
+			colon := strings.LastIndex(path, ":")
+			if modelStart < 0 || colon <= modelStart+len(marker) {
+				return "", fmt.Errorf("invalid multi-protocol gateway Gemini model path")
+			}
+			path = path[:modelStart+len(marker)] + url.PathEscape(spec.UpstreamModel) + path[colon:]
 		}
-		if spec.Operation == execution.OperationListModels {
-			return spec.Path, nil
+		if spec.ChannelID == string(channel.Modelink) {
+			path = modelinkNativePath(spec.ClientProtocol, path)
 		}
-		marker := "/models/"
-		modelStart := strings.Index(spec.Path, marker)
-		colon := strings.LastIndex(spec.Path, ":")
-		if modelStart < 0 || colon <= modelStart+len(marker) {
-			return "", fmt.Errorf("invalid multi-protocol gateway Gemini model path")
-		}
-		return spec.Path[:modelStart+len(marker)] + url.PathEscape(spec.UpstreamModel) + spec.Path[colon:], nil
+		return path, nil
 	case channel.ProviderAnthropic:
 		return spec.Path, nil
 	case channel.ProviderDeepSeek:
@@ -1263,6 +1267,20 @@ func nativePassthroughPath(spec execution.AttemptSpec, providerKind channel.Prov
 		return vertexNativeGeminiPath(spec.UpstreamModel, spec.Path[colon+1:])
 	default:
 		return "", fmt.Errorf("unsupported native channel")
+	}
+}
+
+// modelinkNativePath maps standard client paths to Modelink's native endpoints.
+func modelinkNativePath(clientProtocol protocol.Protocol, path string) string {
+	switch clientProtocol {
+	case protocol.OpenAIResponses, protocol.OpenAIImages:
+		return "/bypass/openai" + path
+	case protocol.Anthropic:
+		return "/bypass/anthropic" + path
+	case protocol.Gemini:
+		return "/bypass/vertex/v1" + strings.TrimPrefix(path, "/v1beta")
+	default:
+		return path
 	}
 }
 
