@@ -62,18 +62,14 @@ func TestIsGLMCodingTargetIsStrict(t *testing.T) {
 }
 
 func TestGLMCodingOfficialCreditFormulaAndReceipt(t *testing.T) {
-	// 10K tokens of each type: 32.6/10.86 peak credits. Cached input is
-	// exclusive of uncached input, not charged twice.
+	// Cached input is exclusive of uncached input, not charged twice.
 	result := usage.Result{State: usage.StateComplete, Tokens: usage.Tokens{UncachedInput: 10_000, CacheRead: 10_000, Output: 10_000}}
-	for _, model := range []string{"glm-5.3", "glm-5.3-flash"} {
+	for model, peak := range map[string]int64{"glm-5.3": 326_000_000, "glm-5.3-flash": 108_600_000, "glm-5.4": 217_000_000} {
 		for _, hour := range []int{14, 18} {
 			at := time.Date(2026, 10, 26, hour, 0, 0, 0, codingCreditZone)
 			table, credit := FreezeGLMCodingCreditTable(at)
 			quote, receipt := table.QuoteForModeWithMultipliers(Identity{ChannelID: "zhipuai", ModelID: model}, result, ModeStandard, PriceMultipliers{Group: DefaultPriceMultiplier, AccessKey: DefaultPriceMultiplier})
-			want := int64(326_000_000)
-			if model == "glm-5.3-flash" {
-				want = 108_600_000
-			}
+			want := peak
 			if hour == 18 {
 				want /= 2
 			}

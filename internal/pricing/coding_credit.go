@@ -54,26 +54,26 @@ func GLMCodingTimeMultiplier(startedAt time.Time) PriceMultiplier {
 	return DefaultPriceMultiplier / 2
 }
 
-// GLMCodingCreditPrices are independent of mutable PAYG/model-price tables.
-// Verified 2026-10-28: https://docs.bigmodel.cn/cn/coding-plan/overview
+// Verified 2026-11-24: https://docs.bigmodel.cn/cn/coding-plan/overview
 // credits = (uncached_input*input + cached_input*cache + output*output)/10000.
-// Multiplying by .01 internalUSD/credit makes the coefficients numerically
-// equal to internalUSD/M tokens. FlashX has no published current rate; neither
-// it nor undocumented aliases are accepted. Configure aliases to these IDs.
+// At .01 internalUSD/credit, the coefficients equal internalUSD/M tokens.
+// Only upstream IDs with verified rates are accepted.
+var glmCodingRates = map[string]struct{ input, cache, output NanoUSD }{
+	"glm-5.3":       {6_900_000_000, 1_700_000_000, 24_000_000_000},
+	"glm-5.3-flash": {2_300_000_000, 560_000_000, 8_000_000_000},
+	"glm-5.4":       {4_600_000_000, 1_100_000_000, 16_000_000_000},
+}
+
+// GLMCodingCreditPrices are independent of mutable PAYG/model-price tables.
 func GLMCodingCreditPrices(model string) (Prices, bool) {
-	var input, cache, output NanoUSD
-	switch model {
-	case "glm-5.3":
-		input, cache, output = 6_900_000_000, 1_700_000_000, 24_000_000_000
-	case "glm-5.3-flash":
-		input, cache, output = 2_300_000_000, 560_000_000, 8_000_000_000
-	default:
+	rate, ok := glmCodingRates[model]
+	if !ok {
 		return Prices{}, false
 	}
 	return Prices{
-		Input:     Price{NanoUSDPerMillion: input, Set: true},
-		CacheRead: Price{NanoUSDPerMillion: cache, Set: true},
-		Output:    Price{NanoUSDPerMillion: output, Set: true},
+		Input:     Price{NanoUSDPerMillion: rate.input, Set: true},
+		CacheRead: Price{NanoUSDPerMillion: rate.cache, Set: true},
+		Output:    Price{NanoUSDPerMillion: rate.output, Set: true},
 	}, true
 }
 
@@ -81,8 +81,8 @@ func GLMCodingCreditPrices(model string) (Prices, bool) {
 // immutable table. No shared PAYG table, group multiplier or setting is mutated.
 func FreezeGLMCodingCreditTable(startedAt time.Time) (*Table, *CodingCreditReceipt) {
 	factor := GLMCodingTimeMultiplier(startedAt)
-	table := &Table{rules: make(map[Identity]Rule, 2)}
-	for _, model := range []string{"glm-5.3", "glm-5.3-flash"} {
+	table := &Table{rules: make(map[Identity]Rule, len(glmCodingRates))}
+	for model := range glmCodingRates {
 		prices, _ := GLMCodingCreditPrices(model)
 		for _, price := range []*Price{&prices.Input, &prices.CacheRead, &prices.Output} {
 			// All published rates divide exactly; no intermediate rounding.

@@ -15,7 +15,7 @@ func TestGLMCodingCreditOptInValidation(t *testing.T) {
 		return CompileInput{ChannelRegistry: channel.NewRegistry(), Groups: []GroupConfig{{
 			ID: 5, Name: "coding", ChannelID: channel.ZhipuAI, ConnectionType: "api_key", Enabled: true,
 			Params:   json.RawMessage(`{"base_url":"https://open.bigmodel.cn/api/coding/paas/v4"}`),
-			Models:   []ModelConfig{{ID: "glm-5.3"}, {ID: "glm-5.3-flash", Alias: "flash"}},
+			Models:   []ModelConfig{{ID: "glm-5.3"}, {ID: "glm-5.3-flash", Alias: "flash"}, {ID: "glm-5.4"}},
 			Settings: config.Settings{SettingGLMCodingCreditEnabled: true},
 		}}}
 	}
